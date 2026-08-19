@@ -1,12 +1,11 @@
 import React, { useState } from 'react';
 import { useFeeData } from '../../context/FeeDataContext';
-import { School, Database, Download, RotateCcw, Check, AlertTriangle, Users, BookOpen } from 'lucide-react';
+import { School, Database, Download, Check, AlertTriangle, Users, BookOpen, RefreshCw, Key, Trash2 } from 'lucide-react';
 
 export const SettingsView: React.FC = () => {
   const {
     settings,
     updateSettings,
-    resetToDefaultData,
     students,
     classes,
     getOverallStats,
@@ -15,13 +14,16 @@ export const SettingsView: React.FC = () => {
     getStudentMonthRecord,
     isCloudConnected,
     isSyncing,
+    cloudError,
+    retryConnection,
+    deleteAllStudents,
   } = useFeeData();
 
   const [schoolName, setSchoolName] = useState(settings.schoolName);
   const [academicYear, setAcademicYear] = useState(settings.academicYear);
   const [term, setTerm] = useState(settings.term || '');
   const [isSaved, setIsSaved] = useState(false);
-  const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
 
   const stats = getOverallStats(activeMonth);
 
@@ -149,7 +151,7 @@ export const SettingsView: React.FC = () => {
       </form>
 
       {/* Database Verification & Status Card */}
-      <div className="bg-white/40 backdrop-blur-md rounded-3xl border border-white/60 p-5 sm:p-6 shadow-xl space-y-3">
+      <div className="bg-white/40 backdrop-blur-md rounded-3xl border border-white/60 p-5 sm:p-6 shadow-xl space-y-4">
         <div className="flex items-center justify-between pb-2 border-b border-white/50">
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-xl bg-emerald-100/80 border border-emerald-200/60 text-emerald-700 flex items-center justify-center shadow-xs">
@@ -157,22 +159,43 @@ export const SettingsView: React.FC = () => {
             </div>
             <div>
               <h3 className="text-sm font-bold text-[#0f172a]">Live Firestore Database State</h3>
-              <p className="text-xs text-[#64748b]">Real-time cloud synchronized • {activeMonth}</p>
+              <p className="text-xs text-[#64748b]">Database ID: ai-studio-schoolfeemanager-ca25bf31-1bd9-4c48-9b77-35cb8db6e41f</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
+            <button
+              id="retry-db-connection-btn"
+              type="button"
+              onClick={retryConnection}
+              disabled={isSyncing}
+              className="px-3 py-1 bg-white/80 hover:bg-white border border-slate-300/80 rounded-xl text-xs font-semibold text-slate-700 shadow-xs flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
+              title="Test & reconnect to Firestore"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin text-slate-500' : 'text-slate-700'}`} />
+              <span>{isSyncing ? 'Testing...' : 'Test Connection'}</span>
+            </button>
             <span className={`px-2.5 py-1 rounded-xl text-xs font-bold border shadow-xs ${
               isCloudConnected ? 'bg-emerald-50/90 text-emerald-800 border-emerald-200' : 'bg-amber-50/90 text-amber-800 border-amber-200'
             }`}>
               {isSyncing ? 'Syncing...' : isCloudConnected ? '● Cloud Live' : '○ Offline Cache'}
             </span>
-            <span className="px-2.5 py-1 bg-white/70 rounded-xl text-xs font-bold text-slate-800 border border-white/70 shadow-xs">
-              {activeMonth}
-            </span>
           </div>
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-center pt-2">
+        {/* Real-time Error Alert if Firestore Connection failed */}
+        {cloudError && (
+          <div className="p-3.5 rounded-2xl bg-amber-50/90 border border-amber-200 text-amber-900 space-y-1.5 text-xs">
+            <div className="flex items-center gap-2 font-bold text-amber-950">
+              <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0" />
+              <span>Firestore Connection Note</span>
+            </div>
+            <p className="font-mono text-[11px] bg-white/70 p-2 rounded-lg border border-amber-200/70 text-amber-900 break-words">
+              {cloudError}
+            </p>
+          </div>
+        )}
+
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-center pt-1">
           <div className="p-3 bg-white/50 rounded-2xl border border-white/60">
             <div className="text-xs text-[#64748b] font-medium flex items-center justify-center gap-1">
               <BookOpen className="w-3.5 h-3.5" /> Classes
@@ -197,13 +220,35 @@ export const SettingsView: React.FC = () => {
             <div className="text-base font-black text-rose-700 mt-0.5">{stats.unpaid}</div>
           </div>
         </div>
+
+        {/* Localhost & Firebase Checklist Accordion */}
+        <div className="pt-2 border-t border-white/50">
+          <div className="bg-white/50 rounded-2xl p-3.5 border border-white/60 space-y-2">
+            <div className="flex items-center gap-2 text-xs font-bold text-slate-800">
+              <Key className="w-4 h-4 text-slate-600" />
+              <span>Firebase Project Configuration Info</span>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-slate-700">
+              <div className="p-2 bg-white/70 rounded-xl border border-white/80">
+                <span className="font-semibold text-slate-500 block text-[11px] uppercase">Project ID</span>
+                <span className="font-mono font-medium text-slate-800">ringed-tesla-htvkm</span>
+              </div>
+              <div className="p-2 bg-white/70 rounded-xl border border-white/80">
+                <span className="font-semibold text-slate-500 block text-[11px] uppercase">Named Database</span>
+                <span className="font-mono font-medium text-slate-800 truncate block" title="ai-studio-schoolfeemanager-ca25bf31-1bd9-4c48-9b77-35cb8db6e41f">
+                  ai-studio-schoolfeemanager...
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* Data Management Actions */}
       <div className="bg-white/40 backdrop-blur-md rounded-3xl border border-white/60 p-5 sm:p-6 shadow-xl space-y-4">
         <div className="pb-2 border-b border-white/50">
           <h3 className="text-sm font-bold text-[#0f172a]">Data Management & Export</h3>
-          <p className="text-xs text-[#64748b]">Export complete period-wise register or reset default records</p>
+          <p className="text-xs text-[#64748b]">Export complete fee register across all academic periods</p>
         </div>
 
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
@@ -216,44 +261,46 @@ export const SettingsView: React.FC = () => {
             <Download className="w-4 h-4 text-slate-700" /> Export Fee Register (CSV)
           </button>
 
-          <button
-            id="reset-data-btn"
-            type="button"
-            onClick={() => setShowResetConfirm(true)}
-            className="min-h-[44px] px-4 py-2.5 rounded-xl border border-rose-200/80 bg-rose-50/60 hover:bg-rose-100 text-rose-700 text-xs font-bold flex items-center justify-center gap-2 transition-colors cursor-pointer"
-          >
-            <RotateCcw className="w-4 h-4" /> Reset to Initial Data
-          </button>
+          {students.length > 0 && (
+            <button
+              id="clear-all-students-btn"
+              type="button"
+              onClick={() => setShowClearConfirm(true)}
+              className="min-h-[44px] px-4 py-2.5 rounded-xl border border-rose-200/80 bg-rose-50/60 hover:bg-rose-100 text-rose-700 text-xs font-bold flex items-center justify-center gap-2 transition-colors cursor-pointer"
+            >
+              <Trash2 className="w-4 h-4" /> Delete All Students ({students.length})
+            </button>
+          )}
         </div>
 
-        {/* Reset Confirmation Dialog */}
-        {showResetConfirm && (
-          <div className="p-4 rounded-2xl bg-amber-50/90 border border-amber-200/80 space-y-2 animate-in fade-in">
-            <div className="flex items-center gap-2 text-xs font-bold text-amber-900">
-              <AlertTriangle className="w-4 h-4 text-amber-600" />
-              Reset All Student Records?
+        {/* Clear Confirmation Dialog */}
+        {showClearConfirm && (
+          <div className="p-4 rounded-2xl bg-rose-50/90 border border-rose-200/80 space-y-2 animate-in fade-in">
+            <div className="flex items-center gap-2 text-xs font-bold text-rose-900">
+              <AlertTriangle className="w-4 h-4 text-rose-600" />
+              Delete All Student Records?
             </div>
-            <p className="text-xs text-amber-800 leading-relaxed">
-              This will re-seed student records across all academic periods and reset settings.
+            <p className="text-xs text-rose-800 leading-relaxed">
+              This will permanently delete all {students.length} student records from your school register and cloud database.
             </p>
             <div className="flex justify-end gap-2 pt-2">
               <button
                 type="button"
-                onClick={() => setShowResetConfirm(false)}
+                onClick={() => setShowClearConfirm(false)}
                 className="min-h-[36px] px-3 py-1 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-700 cursor-pointer"
               >
                 Cancel
               </button>
               <button
-                id="confirm-reset-seed-data-btn"
+                id="confirm-delete-all-students-btn"
                 type="button"
                 onClick={async () => {
-                  await resetToDefaultData();
-                  setShowResetConfirm(false);
+                  await deleteAllStudents();
+                  setShowClearConfirm(false);
                 }}
                 className="min-h-[36px] px-4 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold cursor-pointer"
               >
-                Confirm Reset
+                Confirm Delete All
               </button>
             </div>
           </div>

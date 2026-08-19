@@ -65,7 +65,7 @@ const AppContent: React.FC = () => {
           onOpenAddStudent={() => handleOpenAddStudent()}
         />
 
-        <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8 pb-24 md:pb-12">
+        <main className="flex-1 max-w-7xl w-full mx-auto p-3.5 sm:p-6 lg:p-8 pb-32 md:pb-12">
           {route.tab === 'dashboard' && (
             <DashboardView
               onNavigate={handleNavigate}

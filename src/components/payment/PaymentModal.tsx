@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, Check, Banknote, Smartphone, Building2, FileText, MoreHorizontal, ArrowRight, ShieldCheck } from 'lucide-react';
 import { Student, PaymentMode } from '../../types';
 import { useFeeData } from '../../context/FeeDataContext';
@@ -49,6 +49,15 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ student, onClose, on
   const [note, setNote] = useState('');
   const [step, setStep] = useState<'select' | 'confirm'>('select');
 
+  // Prevent background scrolling on mobile when modal is active
+  useEffect(() => {
+    const originalStyle = window.getComputedStyle(document.body).overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = originalStyle;
+    };
+  }, []);
+
   if (!student) return null;
 
   const handleConfirm = () => {
@@ -60,19 +69,24 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ student, onClose, on
   return (
     <div
       id="payment-modal-backdrop"
-      className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-md flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in duration-150"
+      className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-md flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in duration-150"
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
     >
       <div
         id="payment-modal-card"
-        className="w-full sm:max-w-lg bg-white/70 backdrop-blur-xl rounded-t-3xl sm:rounded-3xl shadow-2xl border border-white/80 overflow-hidden max-h-[90vh] flex flex-col animate-in slide-in-from-bottom sm:zoom-in-95 duration-200"
+        className="w-full sm:max-w-lg bg-white/95 backdrop-blur-2xl rounded-t-3xl sm:rounded-3xl shadow-2xl border border-white/80 overflow-hidden max-h-[92dvh] sm:max-h-[90vh] flex flex-col animate-in slide-in-from-bottom sm:zoom-in-95 duration-200"
       >
+        {/* Mobile Pull Handle */}
+        <div className="sm:hidden pt-2.5 pb-1 flex justify-center bg-white/40">
+          <div className="w-12 h-1 bg-slate-300 rounded-full"></div>
+        </div>
+
         {/* Header */}
-        <div className="px-6 py-4 border-b border-white/60 flex items-center justify-between bg-white/40">
+        <div className="px-5 sm:px-6 py-3.5 border-b border-white/60 flex items-center justify-between bg-white/40">
           <div>
-            <span className="text-xs font-semibold uppercase tracking-wider text-[#64748b]">Record Fee Payment</span>
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-[#64748b]">Record Fee Payment</span>
             <h2 className="text-base sm:text-lg font-bold text-[#0f172a] leading-snug">
               {student.name}
             </h2>
@@ -80,7 +94,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ student, onClose, on
           <button
             id="close-payment-modal"
             onClick={onClose}
-            className="w-10 h-10 flex items-center justify-center rounded-2xl text-slate-500 hover:text-slate-900 hover:bg-white/80 transition-all border border-transparent hover:border-white"
+            className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-2xl text-slate-500 hover:text-slate-900 hover:bg-white/80 transition-all border border-transparent hover:border-white active:scale-95"
             aria-label="Close"
           >
             <X className="w-5 h-5" />
@@ -88,36 +102,32 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ student, onClose, on
         </div>
 
         {/* Student Context Card */}
-        <div className="px-6 pt-4 pb-3 bg-white/40 border-b border-white/50">
+        <div className="px-5 sm:px-6 pt-3 pb-3 bg-white/40 border-b border-white/50">
           <div className="flex items-center justify-between text-xs text-[#64748b]">
             <div>
-              <span className="font-medium text-slate-500">Class & Section:</span>{' '}
-              <span className="font-bold text-[#0f172a]">Class {student.className} - {student.sectionName}</span>
+              <span className="font-medium text-slate-500">Class:</span>{' '}
+              <span className="font-bold text-[#0f172a]">{student.className}</span>
             </div>
-            <div>
-              <span className="font-medium text-slate-500">Roll No:</span>{' '}
-              <span className="font-mono font-bold text-[#0f172a] bg-white/80 border border-white px-2 py-0.5 rounded-lg shadow-xs">{student.rollNumber}</span>
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs text-[#64748b] font-medium">Month:</span>
+              <select
+                id="payment-month-select"
+                value={selectedMonth}
+                onChange={(e) => setSelectedMonth(e.target.value)}
+                className="bg-white border border-white/90 rounded-xl px-2.5 py-1 font-bold text-xs text-[#0f172a] focus:ring-2 focus:ring-slate-500 shadow-xs"
+              >
+                {monthsList.map((m) => (
+                  <option key={m} value={m}>
+                    {m}
+                  </option>
+                ))}
+              </select>
             </div>
-          </div>
-          <div className="mt-2.5 flex items-center justify-between">
-            <span className="text-xs text-[#64748b] font-medium">Payment For Month:</span>
-            <select
-              id="payment-month-select"
-              value={selectedMonth}
-              onChange={(e) => setSelectedMonth(e.target.value)}
-              className="bg-white/80 border border-white/90 rounded-xl px-3 py-1 font-bold text-xs text-[#0f172a] focus:ring-2 focus:ring-slate-500 shadow-xs"
-            >
-              {monthsList.map((m) => (
-                <option key={m} value={m}>
-                  {m}
-                </option>
-              ))}
-            </select>
           </div>
         </div>
 
-        {/* Modal Body */}
-        <div className="p-6 overflow-y-auto space-y-4 flex-1">
+        {/* Modal Body with smooth scrolling */}
+        <div className="p-5 sm:p-6 overflow-y-auto space-y-4 flex-1 overscroll-contain">
           {step === 'select' ? (
             <>
               <div>
@@ -133,10 +143,10 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ student, onClose, on
                         id={`payment-mode-${opt.mode}`}
                         type="button"
                         onClick={() => setSelectedMode(opt.mode)}
-                        className={`w-full min-h-[52px] p-3 rounded-2xl border flex items-center justify-between transition-all text-left ${
+                        className={`w-full min-h-[52px] p-3 rounded-2xl border flex items-center justify-between transition-all text-left active:scale-[0.99] ${
                           isSelected
-                            ? 'border-[#334155] bg-white/90 ring-2 ring-slate-400/30 shadow-sm'
-                            : 'border-white/80 bg-white/50 hover:bg-white/80'
+                            ? 'border-[#334155] bg-white ring-2 ring-slate-400/30 shadow-sm'
+                            : 'border-white/80 bg-white/60 hover:bg-white'
                         }`}
                       >
                         <div className="flex items-center gap-3">
@@ -178,14 +188,14 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ student, onClose, on
                   value={note}
                   onChange={(e) => setNote(e.target.value)}
                   placeholder="e.g. UPI Ref 41209384, Receipt #104"
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-white/80 bg-white/70 backdrop-blur-sm text-sm focus:outline-none focus:ring-2 focus:ring-slate-500 focus:bg-white text-[#0f172a] placeholder:text-[#64748b] shadow-xs"
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-white/80 bg-white/80 backdrop-blur-sm text-sm focus:outline-none focus:ring-2 focus:ring-slate-500 focus:bg-white text-[#0f172a] placeholder:text-[#64748b] shadow-xs"
                 />
               </div>
             </>
           ) : (
             /* Confirmation Step */
             <div className="py-2 space-y-4">
-              <div className="bg-emerald-50/80 border border-emerald-200/80 rounded-2xl p-4 flex items-start gap-3">
+              <div className="bg-emerald-50/90 border border-emerald-200/90 rounded-2xl p-4 flex items-start gap-3">
                 <ShieldCheck className="w-5 h-5 text-emerald-700 flex-shrink-0 mt-0.5" />
                 <div className="text-xs text-emerald-900 leading-relaxed">
                   <p className="font-semibold text-sm text-emerald-950">Confirm {selectedMonth} Fee Payment</p>
@@ -195,26 +205,22 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ student, onClose, on
                 </div>
               </div>
 
-              <div className="border border-white/80 rounded-2xl divide-y divide-white/60 overflow-hidden text-sm bg-white/50">
+              <div className="border border-white/80 rounded-2xl divide-y divide-white/60 overflow-hidden text-sm bg-white/70">
                 <div className="px-4 py-2.5 flex justify-between">
                   <span className="text-[#64748b] text-xs">Student</span>
                   <span className="font-semibold text-[#0f172a]">{student.name}</span>
                 </div>
                 <div className="px-4 py-2.5 flex justify-between">
-                  <span className="text-[#64748b] text-xs">Roll Number</span>
-                  <span className="font-mono font-bold text-[#0f172a]">{student.rollNumber}</span>
-                </div>
-                <div className="px-4 py-2.5 flex justify-between">
-                  <span className="text-[#64748b] text-xs">Class & Section</span>
-                  <span className="font-medium text-[#0f172a]">Class {student.className} • Section {student.sectionName}</span>
+                  <span className="text-[#64748b] text-xs">Class</span>
+                  <span className="font-medium text-[#0f172a]">{student.className}</span>
                 </div>
                 <div className="px-4 py-2.5 flex justify-between">
                   <span className="text-[#64748b] text-xs">Collection Month</span>
-                  <span className="font-bold text-slate-900 bg-white/80 px-2 py-0.5 rounded-md border border-white">{selectedMonth}</span>
+                  <span className="font-bold text-slate-900 bg-white px-2 py-0.5 rounded-md border border-white">{selectedMonth}</span>
                 </div>
                 <div className="px-4 py-2.5 flex justify-between items-center">
                   <span className="text-[#64748b] text-xs">Payment Method</span>
-                  <span className="inline-flex items-center gap-1.5 font-bold text-slate-800 bg-white/80 border border-white px-2 py-0.5 rounded-lg shadow-xs">
+                  <span className="inline-flex items-center gap-1.5 font-bold text-slate-800 bg-white border border-white px-2 py-0.5 rounded-lg shadow-xs">
                     {selectedMode.replace('_', ' ')}
                   </span>
                 </div>
@@ -234,14 +240,14 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ student, onClose, on
         </div>
 
         {/* Footer Actions */}
-        <div className="p-4 sm:p-5 border-t border-white/60 bg-white/40 flex items-center justify-end gap-3">
+        <div className="p-4 sm:p-5 border-t border-white/60 bg-white/50 flex items-center justify-end gap-3 pb-[max(1rem,env(safe-area-inset-bottom))]">
           {step === 'select' ? (
             <>
               <button
                 id="cancel-payment-select"
                 type="button"
                 onClick={onClose}
-                className="min-h-[44px] px-4 py-2.5 rounded-xl border border-white/80 bg-white/60 hover:bg-white text-sm font-semibold text-slate-700 transition-all shadow-xs"
+                className="min-h-[46px] px-4 py-2.5 rounded-xl border border-white/80 bg-white/70 hover:bg-white active:scale-95 text-sm font-semibold text-slate-700 transition-all shadow-xs"
               >
                 Cancel
               </button>
@@ -249,7 +255,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ student, onClose, on
                 id="proceed-to-confirm-payment"
                 type="button"
                 onClick={() => setStep('confirm')}
-                className="min-h-[44px] px-5 py-2.5 rounded-xl bg-[#334155] hover:bg-slate-700 text-white text-sm font-semibold flex items-center gap-2 shadow-md transition-all"
+                className="min-h-[46px] px-5 py-2.5 rounded-xl bg-[#334155] hover:bg-slate-700 active:bg-slate-800 active:scale-95 text-white text-sm font-semibold flex items-center gap-2 shadow-md transition-all"
               >
                 Continue <ArrowRight className="w-4 h-4" />
               </button>
@@ -260,7 +266,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ student, onClose, on
                 id="back-to-select-payment"
                 type="button"
                 onClick={() => setStep('select')}
-                className="min-h-[44px] px-4 py-2.5 rounded-xl border border-white/80 bg-white/60 hover:bg-white text-sm font-semibold text-slate-700 transition-all shadow-xs"
+                className="min-h-[46px] px-4 py-2.5 rounded-xl border border-white/80 bg-white/70 hover:bg-white active:scale-95 text-sm font-semibold text-slate-700 transition-all shadow-xs"
               >
                 Back
               </button>
@@ -268,7 +274,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ student, onClose, on
                 id="confirm-payment-btn"
                 type="button"
                 onClick={handleConfirm}
-                className="min-h-[44px] px-6 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold flex items-center gap-2 shadow-md shadow-emerald-600/20 transition-all"
+                className="min-h-[46px] px-6 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 active:scale-95 text-white text-sm font-bold flex items-center gap-2 shadow-md shadow-emerald-600/20 transition-all"
               >
                 <Check className="w-4 h-4 stroke-[3]" /> Confirm Payment
               </button>

@@ -1,6 +1,12 @@
 @import "tailwindcss";
 
 @layer base {
+  html {
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+    height: 100%;
+  }
+
   body {
     background-color: #e2e8f0;
     background-image: 
@@ -10,8 +16,29 @@
       radial-gradient(at 0% 100%, #94a3b8 0px, transparent 50%);
     background-attachment: fixed;
     color: #1e293b;
-    min-height: 100vh;
+    min-height: 100%;
+    min-height: 100dvh;
+    overflow-x: hidden;
+    -webkit-font-smoothing: antialiased;
   }
+
+  /* Prevent auto-zoom on inputs in iOS Safari */
+  input, select, textarea {
+    font-size: 16px !important;
+  }
+}
+
+/* Custom smooth scrollbar & hiding utilities */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.safe-bottom-padding {
+  padding-bottom: max(1rem, env(safe-area-inset-bottom));
 }
 
 .glass-panel {

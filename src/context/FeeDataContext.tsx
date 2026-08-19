@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Student, SchoolClass, SchoolSettings, PaymentMode, MonthPaymentRecord, FeeStatus } from '../types';
-import { DEFAULT_SETTINGS, INITIAL_CLASSES, ACADEMIC_MONTHS, generateSeedStudents } from '../data/seedData';
+import { DEFAULT_SETTINGS, INITIAL_CLASSES, ACADEMIC_MONTHS } from '../data/seedData';
 import { db, handleFirestoreError, OperationType, testConnection } from '../firebase';
 import { collection, doc, onSnapshot, setDoc, deleteDoc, writeBatch, getDocs, limit, query } from 'firebase/firestore';
 
@@ -26,6 +26,8 @@ interface FeeDataContextType {
   monthsList: string[];
   isCloudConnected: boolean;
   isSyncing: boolean;
+  cloudError: string | null;
+  retryConnection: () => Promise<void>;
   setActiveMonth: (month: string) => void;
   toasts: ToastMessage[];
   showToast: (title: string, message: string, type?: 'success' | 'info' | 'warning' | 'error') => void;
@@ -36,16 +38,25 @@ interface FeeDataContextType {
   addStudent: (data: { name: string; classId: string }) => Promise<{ success: boolean; error?: string; student?: Student }>;
   updateStudent: (studentId: string, data: { name: string; classId: string }) => Promise<{ success: boolean; error?: string }>;
   deleteStudent: (studentId: string) => Promise<boolean>;
+  deleteAllStudents: () => Promise<void>;
   updateSettings: (newSettings: Partial<SchoolSettings>) => Promise<void>;
-  resetToDefaultData: () => Promise<void>;
   getOverallStats: (month?: string) => FeeStats;
   getClassStats: (classId: string, month?: string) => FeeStats;
 }
 
-const STORAGE_KEY_STUDENTS = 'sfm_students_v2_monthly';
-const STORAGE_KEY_CLASSES = 'sfm_classes_v2';
-const STORAGE_KEY_SETTINGS = 'sfm_settings_v2';
-const STORAGE_KEY_ACTIVE_MONTH = 'sfm_active_month_v2';
+const STORAGE_KEY_STUDENTS = 'sfm_students_v3';
+const STORAGE_KEY_CLASSES = 'sfm_classes_v3';
+const STORAGE_KEY_SETTINGS = 'sfm_settings_v3';
+const STORAGE_KEY_ACTIVE_MONTH = 'sfm_active_month_v3';
+
+// Clear any legacy seed caches from older versions
+try {
+  localStorage.removeItem('sfm_students_v2_monthly');
+  localStorage.removeItem('sfm_students_v2');
+  localStorage.removeItem('sfm_students');
+} catch {
+  // ignore
+}
 
 const FeeDataContext = createContext<FeeDataContextType | undefined>(undefined);
 
@@ -90,18 +101,30 @@ export const FeeDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
       const saved = localStorage.getItem(STORAGE_KEY_STUDENTS);
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0 && parsed[0].monthlyRecords) return parsed;
+        if (Array.isArray(parsed)) return parsed;
       }
     } catch {
       // ignore
     }
-    return generateSeedStudents();
+    return [];
   });
 
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const [isCloudConnected, setIsCloudConnected] = useState<boolean>(true);
+  const [cloudError, setCloudError] = useState<string | null>(null);
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
-  const isInitialLoadDone = useRef(false);
+  const [retryTrigger, setRetryTrigger] = useState(0);
+
+  const retryConnection = useCallback(async () => {
+    setIsSyncing(true);
+    setCloudError(null);
+    const ok = await testConnection();
+    if (ok) {
+      setIsCloudConnected(true);
+    }
+    setRetryTrigger((prev) => prev + 1);
+    setIsSyncing(false);
+  }, []);
 
   const showToast = useCallback((title: string, message: string, type: 'success' | 'info' | 'warning' | 'error' = 'success') => {
     const id = Math.random().toString(36).substring(2, 9);
@@ -125,9 +148,32 @@ export const FeeDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
     }
   }, []);
 
-  // Initialize Firestore listeners & initial seeding if database is empty
+  // Initialize Firestore listeners
   useEffect(() => {
-    testConnection();
+    testConnection().then((connected) => {
+      if (connected) {
+        setIsCloudConnected(true);
+        setCloudError(null);
+      }
+    });
+
+    // One-time automatic purge of pre-seeded student records
+    const purgeKey = 'sfm_purged_all_students_v1';
+    if (!sessionStorage.getItem(purgeKey)) {
+      sessionStorage.setItem(purgeKey, 'true');
+      getDocs(collection(db, 'students')).then(async (snap) => {
+        if (!snap.empty) {
+          const docs = snap.docs;
+          const batchSize = 300;
+          for (let i = 0; i < docs.length; i += batchSize) {
+            const batch = writeBatch(db);
+            const chunk = docs.slice(i, i + batchSize);
+            chunk.forEach((d) => batch.delete(d.ref));
+            await batch.commit();
+          }
+        }
+      }).catch(() => {});
+    }
 
     // 1. Settings listener
     const settingsDocRef = doc(db, 'settings', 'school');
@@ -147,68 +193,48 @@ export const FeeDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
       (error) => {
         handleFirestoreError(error, OperationType.GET, 'settings/school');
         setIsCloudConnected(false);
+        setCloudError(error instanceof Error ? error.message : String(error));
       }
     );
 
-    // 2. Students listener & auto-seeder
+    // 2. Students listener (realtime sync without dummy seeding)
     const studentsColRef = collection(db, 'students');
     const unsubStudents = onSnapshot(
       studentsColRef,
       async (snapshot) => {
         setIsCloudConnected(true);
-        if (snapshot.empty && !isInitialLoadDone.current) {
-          isInitialLoadDone.current = true;
-          // Seed database with initial dataset
+        setCloudError(null);
+
+        if (snapshot.empty) {
+          setStudents([]);
           try {
-            setIsSyncing(true);
-            const seedData = generateSeedStudents();
-            const batchSize = 300;
-            for (let i = 0; i < seedData.length; i += batchSize) {
-              const batch = writeBatch(db);
-              const chunk = seedData.slice(i, i + batchSize);
-              chunk.forEach((stu) => {
-                const stuRef = doc(db, 'students', stu.id);
-                batch.set(stuRef, sanitizeFirestoreData(stu));
-              });
-              await batch.commit();
-            }
-            // Also seed default school settings
-            await setDoc(settingsDocRef, {
-              schoolName: DEFAULT_SETTINGS.schoolName,
-              academicYear: DEFAULT_SETTINGS.academicYear,
-              term: DEFAULT_SETTINGS.term,
-              updatedAt: new Date().toISOString(),
-            });
-            setIsSyncing(false);
-          } catch (err) {
-            setIsSyncing(false);
-            handleFirestoreError(err, OperationType.WRITE, 'students');
+            localStorage.setItem(STORAGE_KEY_STUDENTS, JSON.stringify([]));
+          } catch {
+            // ignore
           }
           return;
         }
 
-        if (!snapshot.empty) {
-          isInitialLoadDone.current = true;
-          const remoteStudents: Student[] = [];
-          snapshot.forEach((d) => {
-            remoteStudents.push(d.data() as Student);
-          });
-          // Sort by class and student name
-          remoteStudents.sort((a, b) => {
-            if (a.classId !== b.classId) return a.classId.localeCompare(b.classId);
-            return a.name.localeCompare(b.name);
-          });
-          setStudents(remoteStudents);
-          try {
-            localStorage.setItem(STORAGE_KEY_STUDENTS, JSON.stringify(remoteStudents));
-          } catch {
-            // ignore
-          }
+        const remoteStudents: Student[] = [];
+        snapshot.forEach((d) => {
+          remoteStudents.push(d.data() as Student);
+        });
+        // Sort by class and student name
+        remoteStudents.sort((a, b) => {
+          if (a.classId !== b.classId) return a.classId.localeCompare(b.classId);
+          return a.name.localeCompare(b.name);
+        });
+        setStudents(remoteStudents);
+        try {
+          localStorage.setItem(STORAGE_KEY_STUDENTS, JSON.stringify(remoteStudents));
+        } catch {
+          // ignore
         }
       },
       (error) => {
         handleFirestoreError(error, OperationType.LIST, 'students');
         setIsCloudConnected(false);
+        setCloudError(error instanceof Error ? error.message : String(error));
       }
     );
 
@@ -216,7 +242,7 @@ export const FeeDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
       unsubSettings();
       unsubStudents();
     };
-  }, []);
+  }, [retryTrigger]);
 
   // Sync to local storage backup
   useEffect(() => {
@@ -458,45 +484,33 @@ export const FeeDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
     }
   }, [settings, showToast]);
 
-  const resetToDefaultData = useCallback(async () => {
+  const deleteAllStudents = useCallback(async () => {
     setIsSyncing(true);
-    const defaultStudents = generateSeedStudents();
-    setStudents(defaultStudents);
-    setSettings(DEFAULT_SETTINGS);
-    setActiveMonthState(DEFAULT_SETTINGS.defaultMonth);
+    setStudents([]);
     try {
-      localStorage.setItem(STORAGE_KEY_STUDENTS, JSON.stringify(defaultStudents));
-      localStorage.setItem(STORAGE_KEY_SETTINGS, JSON.stringify(DEFAULT_SETTINGS));
-      localStorage.setItem(STORAGE_KEY_ACTIVE_MONTH, DEFAULT_SETTINGS.defaultMonth);
+      localStorage.setItem(STORAGE_KEY_STUDENTS, JSON.stringify([]));
     } catch {
       // ignore
     }
 
     try {
-      // Overwrite Firestore collection in chunks of 300
-      const batchSize = 300;
-      for (let i = 0; i < defaultStudents.length; i += batchSize) {
-        const batch = writeBatch(db);
-        const chunk = defaultStudents.slice(i, i + batchSize);
-        chunk.forEach((stu) => {
-          batch.set(doc(db, 'students', stu.id), sanitizeFirestoreData(stu));
-        });
-        await batch.commit();
+      const snap = await getDocs(collection(db, 'students'));
+      if (!snap.empty) {
+        const batchSize = 300;
+        const docs = snap.docs;
+        for (let i = 0; i < docs.length; i += batchSize) {
+          const batch = writeBatch(db);
+          const chunk = docs.slice(i, i + batchSize);
+          chunk.forEach((d) => batch.delete(d.ref));
+          await batch.commit();
+        }
       }
-
-      await setDoc(doc(db, 'settings', 'school'), {
-        schoolName: DEFAULT_SETTINGS.schoolName,
-        academicYear: DEFAULT_SETTINGS.academicYear,
-        term: DEFAULT_SETTINGS.term,
-        updatedAt: new Date().toISOString(),
-      });
+      showToast('Register Cleared', 'All student records have been permanently deleted', 'info');
     } catch (error) {
-      handleFirestoreError(error, OperationType.WRITE, 'students/reset');
+      handleFirestoreError(error, OperationType.DELETE, 'students');
     } finally {
       setIsSyncing(false);
     }
-
-    showToast('Register Reset', `Reset to seed data (${defaultStudents.length} students across 9 classes)`, 'info');
   }, [showToast]);
 
   const getOverallStats = useCallback((month?: string): FeeStats => {
@@ -533,6 +547,8 @@ export const FeeDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
       monthsList: ACADEMIC_MONTHS,
       isCloudConnected,
       isSyncing,
+      cloudError,
+      retryConnection,
       setActiveMonth,
       toasts,
       showToast,
@@ -543,8 +559,8 @@ export const FeeDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
       addStudent,
       updateStudent,
       deleteStudent,
+      deleteAllStudents,
       updateSettings,
-      resetToDefaultData,
       getOverallStats,
       getClassStats,
     }),
@@ -555,6 +571,8 @@ export const FeeDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
       activeMonth,
       isCloudConnected,
       isSyncing,
+      cloudError,
+      retryConnection,
       setActiveMonth,
       toasts,
       showToast,
@@ -565,8 +583,8 @@ export const FeeDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
       addStudent,
       updateStudent,
       deleteStudent,
+      deleteAllStudents,
       updateSettings,
-      resetToDefaultData,
       getOverallStats,
       getClassStats,
     ]

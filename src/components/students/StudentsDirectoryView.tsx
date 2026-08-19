@@ -144,7 +144,7 @@ export const StudentsDirectoryView: React.FC<StudentsDirectoryViewProps> = ({
               <button
                 type="button"
                 onClick={() => setStatusFilter('ALL')}
-                className={`min-h-[38px] py-1 px-2 rounded-xl text-xs font-bold transition-all ${
+                className={`min-h-[42px] py-1 px-2 rounded-xl text-xs font-bold transition-all active:scale-95 ${
                   statusFilter === 'ALL'
                     ? 'bg-[#334155] text-white shadow-md'
                     : 'bg-white/60 text-[#64748b] hover:bg-white/90 border border-white/70'
@@ -155,7 +155,7 @@ export const StudentsDirectoryView: React.FC<StudentsDirectoryViewProps> = ({
               <button
                 type="button"
                 onClick={() => setStatusFilter('PAID')}
-                className={`min-h-[38px] py-1 px-2 rounded-xl text-xs font-bold transition-all ${
+                className={`min-h-[42px] py-1 px-2 rounded-xl text-xs font-bold transition-all active:scale-95 ${
                   statusFilter === 'PAID'
                     ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/20'
                     : 'bg-emerald-50/80 text-emerald-800 hover:bg-emerald-100 border border-emerald-200/50'
@@ -166,7 +166,7 @@ export const StudentsDirectoryView: React.FC<StudentsDirectoryViewProps> = ({
               <button
                 type="button"
                 onClick={() => setStatusFilter('UNPAID')}
-                className={`min-h-[38px] py-1 px-2 rounded-xl text-xs font-bold transition-all ${
+                className={`min-h-[42px] py-1 px-2 rounded-xl text-xs font-bold transition-all active:scale-95 ${
                   statusFilter === 'UNPAID'
                     ? 'bg-rose-600 text-white shadow-md shadow-rose-600/20'
                     : 'bg-rose-50/80 text-rose-800 hover:bg-rose-100 border border-rose-200/50'

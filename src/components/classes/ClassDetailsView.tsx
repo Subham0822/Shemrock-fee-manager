@@ -182,11 +182,11 @@ export const ClassDetailsView: React.FC<ClassDetailsViewProps> = ({
         </div>
 
         {/* Filter Chips */}
-        <div className="flex items-center gap-2 overflow-x-auto pb-0.5">
+        <div className="flex items-center gap-2 overflow-x-auto pb-0.5 no-scrollbar">
           <button
             id="filter-status-all"
             onClick={() => setStatusFilter('ALL')}
-            className={`min-h-[40px] px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
+            className={`min-h-[42px] px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 flex-shrink-0 active:scale-95 ${
               statusFilter === 'ALL'
                 ? 'bg-[#334155] text-white shadow-md'
                 : 'bg-white/60 text-[#64748b] hover:bg-white/90 border border-white/70'
@@ -201,7 +201,7 @@ export const ClassDetailsView: React.FC<ClassDetailsViewProps> = ({
           <button
             id="filter-status-paid"
             onClick={() => setStatusFilter('PAID')}
-            className={`min-h-[40px] px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
+            className={`min-h-[42px] px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 flex-shrink-0 active:scale-95 ${
               statusFilter === 'PAID'
                 ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/20'
                 : 'bg-emerald-50/80 text-emerald-800 hover:bg-emerald-100 border border-emerald-200/50'
@@ -217,7 +217,7 @@ export const ClassDetailsView: React.FC<ClassDetailsViewProps> = ({
           <button
             id="filter-status-unpaid"
             onClick={() => setStatusFilter('UNPAID')}
-            className={`min-h-[40px] px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
+            className={`min-h-[42px] px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 flex-shrink-0 active:scale-95 ${
               statusFilter === 'UNPAID'
                 ? 'bg-rose-600 text-white shadow-md shadow-rose-600/20'
                 : 'bg-rose-50/80 text-rose-800 hover:bg-rose-100 border border-rose-200/50'

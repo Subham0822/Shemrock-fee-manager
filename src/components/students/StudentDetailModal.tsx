@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { X, CheckCircle2, AlertCircle, Calendar, Hash, GraduationCap, CreditCard, Trash2, Edit3, Check, Undo2 } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { X, CheckCircle2, AlertCircle, Calendar, GraduationCap, Trash2, Edit3, Check, Undo2 } from 'lucide-react';
 import { Student } from '../../types';
 import { useFeeData } from '../../context/FeeDataContext';
 
@@ -22,6 +22,15 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [inspectedMonth, setInspectedMonth] = useState<string>(activeMonth);
 
+  // Prevent background scrolling on mobile when modal is active
+  useEffect(() => {
+    const originalStyle = window.getComputedStyle(document.body).overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = originalStyle;
+    };
+  }, []);
+
   if (!student) return null;
 
   const currentMonthRecord = getStudentMonthRecord(student, activeMonth);
@@ -43,39 +52,44 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
   return (
     <div
       id="student-detail-backdrop"
-      className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-md flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in duration-150"
+      className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-md flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in duration-150"
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
     >
       <div
         id="student-detail-card"
-        className="w-full sm:max-w-xl bg-white/70 backdrop-blur-xl rounded-t-3xl sm:rounded-3xl shadow-2xl border border-white/80 overflow-hidden flex flex-col max-h-[92vh] animate-in slide-in-from-bottom sm:zoom-in-95 duration-200"
+        className="w-full sm:max-w-xl bg-white/95 backdrop-blur-2xl rounded-t-3xl sm:rounded-3xl shadow-2xl border border-white/80 overflow-hidden flex flex-col max-h-[92dvh] sm:max-h-[90vh] animate-in slide-in-from-bottom sm:zoom-in-95 duration-200"
       >
+        {/* Mobile Pull Handle */}
+        <div className="sm:hidden pt-2.5 pb-1 flex justify-center bg-white/40">
+          <div className="w-12 h-1 bg-slate-300 rounded-full"></div>
+        </div>
+
         {/* Header */}
-        <div className="px-6 py-4 border-b border-white/60 flex items-center justify-between bg-white/40">
+        <div className="px-5 sm:px-6 py-3.5 border-b border-white/60 flex items-center justify-between bg-white/40">
           <div>
-            <span className="text-xs font-semibold uppercase tracking-wider text-[#64748b]">Student Profile</span>
-            <h2 className="text-lg font-bold text-[#0f172a] leading-snug">{student.name}</h2>
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-[#64748b]">Student Profile</span>
+            <h2 className="text-base sm:text-lg font-bold text-[#0f172a] leading-snug">{student.name}</h2>
           </div>
           <button
             id="close-student-detail"
             onClick={onClose}
-            className="w-9 h-9 flex items-center justify-center rounded-xl text-slate-500 hover:text-slate-900 hover:bg-white/80 transition-all border border-transparent hover:border-white"
+            className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-2xl text-slate-500 hover:text-slate-900 hover:bg-white/80 transition-all border border-transparent hover:border-white active:scale-95"
             aria-label="Close"
           >
-            <X className="w-4 h-4" />
+            <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Content */}
-        <div className="p-6 space-y-4 overflow-y-auto flex-1">
+        <div className="p-5 sm:p-6 space-y-4 overflow-y-auto flex-1 overscroll-contain">
           {/* Status Hero Card for Active Month */}
           <div
             className={`p-4 rounded-2xl border flex items-center justify-between ${
               isPaidCurrentMonth
-                ? 'bg-emerald-50/80 border-emerald-200/80 text-emerald-950 shadow-xs'
-                : 'bg-rose-50/80 border-rose-200/80 text-rose-950 shadow-xs'
+                ? 'bg-emerald-50/90 border-emerald-200/90 text-emerald-950 shadow-xs'
+                : 'bg-rose-50/90 border-rose-200/90 text-rose-950 shadow-xs'
             }`}
           >
             <div className="flex items-center gap-3">
@@ -87,23 +101,23 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
                 {isPaidCurrentMonth ? <CheckCircle2 className="w-6 h-6" /> : <AlertCircle className="w-6 h-6" />}
               </div>
               <div>
-                <div className="text-xs font-semibold uppercase tracking-wider opacity-80">
+                <div className="text-[11px] font-semibold uppercase tracking-wider opacity-80">
                   {activeMonth} Fee Status
                 </div>
-                <div className="text-lg font-black tracking-tight">{currentMonthRecord.feeStatus}</div>
+                <div className="text-base sm:text-lg font-black tracking-tight">{currentMonthRecord.feeStatus}</div>
               </div>
             </div>
 
             <div className="text-right">
-              <div className="text-xs font-semibold opacity-80">Academic Year Progress</div>
-              <div className="text-sm font-bold bg-white/80 px-2.5 py-1 rounded-lg border border-white">
-                {totalMonthsPaid} / {monthsList.length} Periods Paid
+              <div className="text-[11px] font-semibold opacity-80">Academic Year</div>
+              <div className="text-xs sm:text-sm font-bold bg-white px-2.5 py-1 rounded-lg border border-white shadow-xs">
+                {totalMonthsPaid} / {monthsList.length} Paid
               </div>
             </div>
           </div>
 
           {/* Details Table */}
-          <div className="border border-white/80 rounded-2xl divide-y divide-white/60 overflow-hidden text-sm bg-white/50 shadow-xs">
+          <div className="border border-white/80 rounded-2xl divide-y divide-white/60 overflow-hidden text-sm bg-white/70 shadow-xs">
             <div className="px-4 py-2.5 flex items-center justify-between">
               <span className="text-[#64748b] flex items-center gap-2 text-xs font-semibold">
                 <GraduationCap className="w-4 h-4 text-slate-500" /> Class
@@ -115,12 +129,12 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
           </div>
 
           {/* Month/Period Payment Register / History */}
-          <div className="bg-white/50 border border-white/80 rounded-2xl p-4 shadow-xs space-y-3">
+          <div className="bg-white/70 border border-white/80 rounded-2xl p-4 shadow-xs space-y-3">
             <div className="flex items-center justify-between">
               <h3 className="text-xs font-bold uppercase tracking-wider text-[#0f172a] flex items-center gap-1.5">
-                <Calendar className="w-4 h-4 text-slate-500" /> Payment Periods Register
+                <Calendar className="w-4 h-4 text-slate-500" /> Payment Register
               </h3>
-              <span className="text-[11px] text-[#64748b]">Select period to inspect</span>
+              <span className="text-[11px] text-[#64748b]">Tap to inspect</span>
             </div>
 
             {/* Months Pills Grid */}
@@ -136,10 +150,10 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
                     key={m}
                     type="button"
                     onClick={() => setInspectedMonth(m)}
-                    className={`p-2 rounded-xl text-xs font-bold border transition-all text-left flex flex-col justify-between ${
+                    className={`min-h-[46px] p-2.5 rounded-xl text-xs font-bold border transition-all text-left flex flex-col justify-between active:scale-95 ${
                       isInspected
-                        ? 'ring-2 ring-slate-400/40 bg-white shadow-sm'
-                        : 'bg-white/60 hover:bg-white/90'
+                        ? 'ring-2 ring-slate-400/50 bg-white shadow-sm'
+                        : 'bg-white/80 hover:bg-white'
                     } ${
                       isPaid
                         ? 'border-emerald-200 text-emerald-800'
@@ -151,7 +165,7 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
                         {m}
                       </span>
                       {isCurrent && (
-                        <span className="w-1.5 h-1.5 rounded-full bg-slate-500"></span>
+                        <span className="w-1.5 h-1.5 rounded-full bg-slate-600"></span>
                       )}
                     </div>
                     <div className="mt-1 flex items-center gap-1 text-[10px]">
@@ -167,7 +181,7 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
             </div>
 
             {/* Selected Period Details Snippet */}
-            <div className="bg-white/80 border border-white rounded-xl p-3 text-xs space-y-1.5">
+            <div className="bg-white border border-white/90 rounded-xl p-3 text-xs space-y-1.5 shadow-xs">
               <div className="flex items-center justify-between">
                 <span className="font-bold text-slate-800">
                   {inspectedMonth} Record
@@ -200,7 +214,7 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
 
           {/* Delete Confirmation Step inside Modal */}
           {showDeleteConfirm ? (
-            <div className="p-4 bg-rose-50/80 border border-rose-200/80 rounded-2xl space-y-3 animate-in fade-in">
+            <div className="p-4 bg-rose-50/90 border border-rose-200 rounded-2xl space-y-3 animate-in fade-in">
               <div className="text-xs font-bold text-rose-900">Confirm Deletion</div>
               <p className="text-xs text-rose-800 leading-relaxed">
                 Are you sure you want to permanently delete <strong>{student.name}</strong> from the school register? This action cannot be undone.
@@ -209,7 +223,7 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
                 <button
                   type="button"
                   onClick={() => setShowDeleteConfirm(false)}
-                  className="min-h-[40px] px-3 py-1.5 rounded-xl border border-slate-300 text-xs font-semibold text-slate-700 bg-white"
+                  className="min-h-[42px] px-3.5 py-1.5 rounded-xl border border-slate-300 text-xs font-semibold text-slate-700 bg-white active:scale-95"
                 >
                   Cancel
                 </button>
@@ -217,7 +231,7 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
                   id="confirm-delete-student-btn"
                   type="button"
                   onClick={handleDelete}
-                  className="min-h-[40px] px-4 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold shadow-xs"
+                  className="min-h-[42px] px-4 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 active:scale-95 text-white text-xs font-bold shadow-xs"
                 >
                   Delete Student
                 </button>
@@ -227,7 +241,7 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
         </div>
 
         {/* Action Buttons */}
-        <div className="p-4 sm:p-5 border-t border-white/60 bg-white/40 flex flex-wrap items-center justify-between gap-2">
+        <div className="p-4 sm:p-5 border-t border-white/60 bg-white/50 flex flex-wrap items-center justify-between gap-2 pb-[max(1rem,env(safe-area-inset-bottom))]">
           <div className="flex items-center gap-2">
             <button
               id="edit-student-from-detail"
@@ -236,7 +250,7 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
                 onClose();
                 onOpenEdit(student);
               }}
-              className="min-h-[44px] px-3.5 py-2 rounded-xl border border-white/80 bg-white/60 hover:bg-white text-slate-700 text-xs font-semibold flex items-center gap-1.5 transition-all shadow-xs"
+              className="min-h-[46px] px-3.5 py-2 rounded-xl border border-white/80 bg-white/70 hover:bg-white active:scale-95 text-slate-700 text-xs font-semibold flex items-center gap-1.5 transition-all shadow-xs"
             >
               <Edit3 className="w-3.5 h-3.5" /> Edit
             </button>
@@ -244,7 +258,7 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
               id="delete-student-trigger"
               type="button"
               onClick={() => setShowDeleteConfirm(true)}
-              className="min-h-[44px] px-3 py-2 rounded-xl text-rose-600 hover:bg-rose-50/60 text-xs font-semibold flex items-center gap-1.5 transition-colors"
+              className="min-h-[46px] px-3 py-2 rounded-xl text-rose-600 hover:bg-rose-50/80 active:scale-95 text-xs font-semibold flex items-center gap-1.5 transition-colors"
             >
               <Trash2 className="w-3.5 h-3.5" /> Delete
             </button>
@@ -259,7 +273,7 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
                   onClose();
                   onOpenPayment(student);
                 }}
-                className="min-h-[44px] px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold flex items-center gap-2 shadow-md shadow-emerald-600/20 transition-all"
+                className="min-h-[46px] px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 active:scale-95 text-white text-sm font-bold flex items-center gap-2 shadow-md shadow-emerald-600/20 transition-all"
               >
                 <Check className="w-4 h-4 stroke-[3]" /> Mark {activeMonth} Paid
               </button>
@@ -271,7 +285,7 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
                   onClose();
                   onOpenUnpaid(student);
                 }}
-                className="min-h-[44px] px-4 py-2.5 rounded-xl bg-amber-50/80 border border-amber-300 hover:bg-amber-100 text-amber-900 text-xs font-bold flex items-center gap-1.5 transition-colors shadow-xs"
+                className="min-h-[46px] px-4 py-2.5 rounded-xl bg-amber-50/90 border border-amber-300 hover:bg-amber-100 active:scale-95 text-amber-900 text-xs font-bold flex items-center gap-1.5 transition-colors shadow-xs"
               >
                 <Undo2 className="w-4 h-4" /> Revert {activeMonth} to Unpaid
               </button>

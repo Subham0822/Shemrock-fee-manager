@@ -49,6 +49,11 @@ const STORAGE_KEY_ACTIVE_MONTH = 'sfm_active_month_v2';
 
 const FeeDataContext = createContext<FeeDataContextType | undefined>(undefined);
 
+// Helper to remove any undefined properties which cause Firestore setDoc to fail
+function sanitizeFirestoreData<T>(data: T): T {
+  return JSON.parse(JSON.stringify(data));
+}
+
 export const FeeDataProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [classes] = useState<SchoolClass[]>(() => {
     try {
@@ -163,7 +168,7 @@ export const FeeDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
               const chunk = seedData.slice(i, i + batchSize);
               chunk.forEach((stu) => {
                 const stuRef = doc(db, 'students', stu.id);
-                batch.set(stuRef, stu);
+                batch.set(stuRef, sanitizeFirestoreData(stu));
               });
               await batch.commit();
             }
@@ -286,7 +291,7 @@ export const FeeDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
     // Firestore sync
     try {
-      await setDoc(doc(db, 'students', studentId), updatedStudent);
+      await setDoc(doc(db, 'students', studentId), sanitizeFirestoreData(updatedStudent));
       return true;
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, `students/${studentId}`);
@@ -305,7 +310,6 @@ export const FeeDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
       feeStatus: 'UNPAID',
       paymentMode: null,
       paymentDate: null,
-      paymentNote: undefined,
     };
     const updatedRecords = {
       ...currentRecords,
@@ -329,7 +333,7 @@ export const FeeDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
     // Firestore sync
     try {
-      await setDoc(doc(db, 'students', studentId), updatedStudent);
+      await setDoc(doc(db, 'students', studentId), sanitizeFirestoreData(updatedStudent));
       return true;
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, `students/${studentId}`);
@@ -380,7 +384,7 @@ export const FeeDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
     showToast('Student Added', `${trimmedName} added to ${cls.name}`, 'success');
 
     try {
-      await setDoc(doc(db, 'students', newStudentId), newStudent);
+      await setDoc(doc(db, 'students', newStudentId), sanitizeFirestoreData(newStudent));
     } catch (error) {
       handleFirestoreError(error, OperationType.CREATE, `students/${newStudentId}`);
     }
@@ -412,7 +416,7 @@ export const FeeDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
     showToast('Student Updated', `Record for ${trimmedName} updated successfully`, 'success');
 
     try {
-      await setDoc(doc(db, 'students', studentId), updatedStudent);
+      await setDoc(doc(db, 'students', studentId), sanitizeFirestoreData(updatedStudent));
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, `students/${studentId}`);
     }
@@ -475,7 +479,7 @@ export const FeeDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
         const batch = writeBatch(db);
         const chunk = defaultStudents.slice(i, i + batchSize);
         chunk.forEach((stu) => {
-          batch.set(doc(db, 'students', stu.id), stu);
+          batch.set(doc(db, 'students', stu.id), sanitizeFirestoreData(stu));
         });
         await batch.commit();
       }

@@ -1,36 +1,46 @@
 import React, { useState } from 'react';
 import { useFeeData } from '../../context/FeeDataContext';
-import { School, Database, Download, RotateCcw, ShieldCheck, Check, AlertTriangle } from 'lucide-react';
+import { School, Database, Download, RotateCcw, Check, AlertTriangle, Users, BookOpen } from 'lucide-react';
 
 export const SettingsView: React.FC = () => {
-  const { settings, updateSettings, resetToDefaultData, students, classes, getOverallStats, activeMonth, monthsList, getStudentMonthRecord, isCloudConnected, isSyncing } = useFeeData();
+  const {
+    settings,
+    updateSettings,
+    resetToDefaultData,
+    students,
+    classes,
+    getOverallStats,
+    activeMonth,
+    monthsList,
+    getStudentMonthRecord,
+    isCloudConnected,
+    isSyncing,
+  } = useFeeData();
 
   const [schoolName, setSchoolName] = useState(settings.schoolName);
   const [academicYear, setAcademicYear] = useState(settings.academicYear);
-  const [term, setTerm] = useState(settings.term);
+  const [term, setTerm] = useState(settings.term || '');
   const [isSaved, setIsSaved] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
 
   const stats = getOverallStats(activeMonth);
 
-  const handleSaveSettings = (e: React.FormEvent) => {
+  const handleSaveSettings = async (e: React.FormEvent) => {
     e.preventDefault();
-    updateSettings({
+    await updateSettings({
       schoolName: schoolName.trim() || 'School Fee Manager',
       academicYear: academicYear.trim() || '2026-2027',
-      term: term.trim() || 'Academic Year 2026-27',
+      term: term.trim() || 'Regular Academic Session',
     });
     setIsSaved(true);
     setTimeout(() => setIsSaved(false), 2500);
   };
 
-  // Export Comprehensive CSV with all 12 months status
+  // Export Comprehensive CSV with all consolidated academic periods status
   const handleExportCSV = () => {
     const headers = [
-      'Roll Number',
       'Student Name',
       'Class',
-      'Section',
       `${activeMonth} Status`,
       `${activeMonth} Payment Mode`,
       `${activeMonth} Payment Date`,
@@ -38,16 +48,14 @@ export const SettingsView: React.FC = () => {
     ];
 
     const rows = students.map((s) => {
-      const currentMonthRec = getStudentMonthRecord(s.id, activeMonth);
-      const allMonthStatuses = monthsList.map((m) => getStudentMonthRecord(s.id, m).status);
+      const currentMonthRec = getStudentMonthRecord(s, activeMonth);
+      const allMonthStatuses = monthsList.map((m) => getStudentMonthRecord(s, m).feeStatus);
 
       return [
-        `"${s.rollNumber}"`,
         `"${s.name}"`,
-        `"Class ${s.className}"`,
-        `"Section ${s.sectionName}"`,
-        `"${currentMonthRec.status}"`,
-        `"${currentMonthRec.paymentMode || ''}"`,
+        `"${s.className}"`,
+        `"${currentMonthRec.feeStatus}"`,
+        `"${currentMonthRec.paymentMode ? currentMonthRec.paymentMode.replace('_', ' ') : ''}"`,
         `"${currentMonthRec.paymentDate || ''}"`,
         ...allMonthStatuses.map((st) => `"${st}"`),
       ];
@@ -57,7 +65,7 @@ export const SettingsView: React.FC = () => {
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement('a');
     link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `School_Monthly_Fee_Register_${new Date().toISOString().split('T')[0]}.csv`);
+    link.setAttribute('download', `School_Fee_Register_${new Date().toISOString().split('T')[0]}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -68,7 +76,7 @@ export const SettingsView: React.FC = () => {
       <div>
         <h2 className="text-xl sm:text-2xl font-bold text-[#0f172a]">Application Settings</h2>
         <p className="text-xs sm:text-sm text-[#64748b]">
-          Configure school identity, academic session, and manage month-wise student register
+          Configure school profile, academic session, and export fee registers
         </p>
       </div>
 
@@ -80,7 +88,7 @@ export const SettingsView: React.FC = () => {
           </div>
           <div>
             <h3 className="text-sm font-bold text-[#0f172a]">School & Academic Profile</h3>
-            <p className="text-xs text-[#64748b]">Appears on navigation header and monthly registers</p>
+            <p className="text-xs text-[#64748b]">Appears on navigation header and exported registers</p>
           </div>
         </div>
 
@@ -118,7 +126,6 @@ export const SettingsView: React.FC = () => {
             </label>
             <input
               type="text"
-              required
               value={term}
               onChange={(e) => setTerm(e.target.value)}
               placeholder="e.g. Regular Academic Session"
@@ -134,7 +141,7 @@ export const SettingsView: React.FC = () => {
           <button
             id="save-settings-btn"
             type="submit"
-            className="min-h-[44px] px-5 py-2.5 bg-[#334155] hover:bg-slate-700 active:bg-slate-800 text-white rounded-xl text-xs font-bold shadow-md transition-all"
+            className="min-h-[44px] px-5 py-2.5 bg-[#334155] hover:bg-slate-700 active:bg-slate-800 text-white rounded-xl text-xs font-bold shadow-md transition-all cursor-pointer"
           >
             Save Settings
           </button>
@@ -165,32 +172,29 @@ export const SettingsView: React.FC = () => {
           </div>
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5 text-center pt-2">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-center pt-2">
           <div className="p-3 bg-white/50 rounded-2xl border border-white/60">
-            <div className="text-xs text-[#64748b] font-medium">Classes</div>
-            <div className="text-base font-black text-[#0f172a]">{classes.length}</div>
-          </div>
-
-          <div className="p-3 bg-white/50 rounded-2xl border border-white/60">
-            <div className="text-xs text-[#64748b] font-medium">Sections</div>
-            <div className="text-base font-black text-[#0f172a]">
-              {classes.reduce((acc, c) => acc + c.sections.length, 0)}
+            <div className="text-xs text-[#64748b] font-medium flex items-center justify-center gap-1">
+              <BookOpen className="w-3.5 h-3.5" /> Classes
             </div>
+            <div className="text-base font-black text-[#0f172a] mt-0.5">{classes.length}</div>
           </div>
 
           <div className="p-3 bg-white/50 rounded-2xl border border-white/60">
-            <div className="text-xs text-[#64748b] font-medium">Students</div>
-            <div className="text-base font-black text-[#0f172a]">{stats.total}</div>
+            <div className="text-xs text-[#64748b] font-medium flex items-center justify-center gap-1">
+              <Users className="w-3.5 h-3.5" /> Students
+            </div>
+            <div className="text-base font-black text-[#0f172a] mt-0.5">{stats.total}</div>
           </div>
 
           <div className="p-3 bg-emerald-50/70 rounded-2xl border border-emerald-100">
             <div className="text-xs text-emerald-800 font-medium">{activeMonth} Paid</div>
-            <div className="text-base font-black text-emerald-700">{stats.paid}</div>
+            <div className="text-base font-black text-emerald-700 mt-0.5">{stats.paid}</div>
           </div>
 
-          <div className="p-3 bg-rose-50/70 rounded-2xl border border-rose-100 col-span-2 sm:col-span-1">
+          <div className="p-3 bg-rose-50/70 rounded-2xl border border-rose-100">
             <div className="text-xs text-rose-800 font-medium">{activeMonth} Unpaid</div>
-            <div className="text-base font-black text-rose-700">{stats.unpaid}</div>
+            <div className="text-base font-black text-rose-700 mt-0.5">{stats.unpaid}</div>
           </div>
         </div>
       </div>
@@ -199,7 +203,7 @@ export const SettingsView: React.FC = () => {
       <div className="bg-white/40 backdrop-blur-md rounded-3xl border border-white/60 p-5 sm:p-6 shadow-xl space-y-4">
         <div className="pb-2 border-b border-white/50">
           <h3 className="text-sm font-bold text-[#0f172a]">Data Management & Export</h3>
-          <p className="text-xs text-[#64748b]">Export complete month-wise reports or restore default register</p>
+          <p className="text-xs text-[#64748b]">Export complete period-wise register or reset default records</p>
         </div>
 
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
@@ -207,18 +211,18 @@ export const SettingsView: React.FC = () => {
             id="export-csv-btn"
             type="button"
             onClick={handleExportCSV}
-            className="min-h-[44px] flex-1 px-4 py-2.5 rounded-xl border border-white/80 bg-white/60 hover:bg-white text-slate-800 text-xs font-bold flex items-center justify-center gap-2 shadow-xs transition-all"
+            className="min-h-[44px] flex-1 px-4 py-2.5 rounded-xl border border-white/80 bg-white/60 hover:bg-white text-slate-800 text-xs font-bold flex items-center justify-center gap-2 shadow-xs transition-all cursor-pointer"
           >
-            <Download className="w-4 h-4 text-slate-700" /> Export Complete Monthly Register (CSV)
+            <Download className="w-4 h-4 text-slate-700" /> Export Fee Register (CSV)
           </button>
 
           <button
             id="reset-data-btn"
             type="button"
             onClick={() => setShowResetConfirm(true)}
-            className="min-h-[44px] px-4 py-2.5 rounded-xl border border-rose-200/80 bg-rose-50/60 hover:bg-rose-100 text-rose-700 text-xs font-bold flex items-center justify-center gap-2 transition-colors"
+            className="min-h-[44px] px-4 py-2.5 rounded-xl border border-rose-200/80 bg-rose-50/60 hover:bg-rose-100 text-rose-700 text-xs font-bold flex items-center justify-center gap-2 transition-colors cursor-pointer"
           >
-            <RotateCcw className="w-4 h-4" /> Reset to Initial Seed Data
+            <RotateCcw className="w-4 h-4" /> Reset to Initial Data
           </button>
         </div>
 
@@ -230,24 +234,24 @@ export const SettingsView: React.FC = () => {
               Reset All Student Records?
             </div>
             <p className="text-xs text-amber-800 leading-relaxed">
-              This will restore all 529 students to standard seed values across all 12 academic months and reset settings.
+              This will re-seed student records across all academic periods and reset settings.
             </p>
             <div className="flex justify-end gap-2 pt-2">
               <button
                 type="button"
                 onClick={() => setShowResetConfirm(false)}
-                className="min-h-[36px] px-3 py-1 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-700"
+                className="min-h-[36px] px-3 py-1 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-700 cursor-pointer"
               >
                 Cancel
               </button>
               <button
                 id="confirm-reset-seed-data-btn"
                 type="button"
-                onClick={() => {
-                  resetToDefaultData();
+                onClick={async () => {
+                  await resetToDefaultData();
                   setShowResetConfirm(false);
                 }}
-                className="min-h-[36px] px-4 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold"
+                className="min-h-[36px] px-4 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold cursor-pointer"
               >
                 Confirm Reset
               </button>

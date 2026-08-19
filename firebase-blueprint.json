@@ -1,0 +1,44 @@
+{
+  "entities": {
+    "Student": {
+      "title": "Student",
+      "description": "Student record with month-wise fee payment tracking",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "rollNumber": { "type": "string", "maxLength": 64 },
+        "name": { "type": "string", "maxLength": 150 },
+        "classId": { "type": "string", "maxLength": 64 },
+        "className": { "type": "string", "maxLength": 64 },
+        "sectionId": { "type": "string", "maxLength": 64 },
+        "sectionName": { "type": "string", "maxLength": 64 },
+        "monthlyRecords": { "type": "object" },
+        "createdAt": { "type": "string", "maxLength": 64 },
+        "updatedAt": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["id", "rollNumber", "name", "classId", "className", "sectionId", "sectionName"]
+    },
+    "SchoolSettings": {
+      "title": "SchoolSettings",
+      "description": "Global school identity and session metadata",
+      "type": "object",
+      "properties": {
+        "schoolName": { "type": "string", "maxLength": 200 },
+        "academicYear": { "type": "string", "maxLength": 64 },
+        "term": { "type": "string", "maxLength": 100 },
+        "updatedAt": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["schoolName", "academicYear", "term"]
+    }
+  },
+  "firestore": {
+    "/students/{studentId}": {
+      "schema": "Student",
+      "description": "Collection of enrolled student documents"
+    },
+    "/settings/school": {
+      "schema": "SchoolSettings",
+      "description": "Singleton configuration document for school profile"
+    }
+  }
+}

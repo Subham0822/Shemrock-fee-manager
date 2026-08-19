@@ -1,0 +1,6 @@
+{
+  "name": "School Fee Manager",
+  "description": "A frosted-glass fee payment register for school staff to track student paid/unpaid status across consolidated academic periods and classes without sections or roll numbers.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

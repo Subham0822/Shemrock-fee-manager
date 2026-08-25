@@ -1,7 +1,7 @@
 import React from 'react';
-import { ActiveTab, RouteState } from '../../types';
+import { RouteState } from '../../types';
 import { useFeeData } from '../../context/FeeDataContext';
-import { School, ArrowLeft, Calendar, ChevronLeft, ChevronRight, Cloud, CloudOff, RefreshCw } from 'lucide-react';
+import { School, ArrowLeft, Calendar, ChevronLeft, ChevronRight } from 'lucide-react';
 
 interface TopBarProps {
   route: RouteState;
@@ -10,7 +10,7 @@ interface TopBarProps {
 }
 
 export const TopBar: React.FC<TopBarProps> = ({ route, onNavigate }) => {
-  const { settings, classes, getOverallStats, activeMonth, monthsList, setActiveMonth, isCloudConnected, isSyncing } = useFeeData();
+  const { settings, classes, getOverallStats, activeMonth, monthsList, setActiveMonth } = useFeeData();
   const stats = getOverallStats();
 
   const currentClass = route.classId ? classes.find((c) => c.id === route.classId) : null;
@@ -86,26 +86,6 @@ export const TopBar: React.FC<TopBarProps> = ({ route, onNavigate }) => {
 
         {/* Global Month Switcher & summary pill */}
         <div className="flex items-center gap-2 flex-shrink-0">
-          {/* Cloud Connection Badge */}
-          <div
-            id="cloud-status-indicator"
-            title={isCloudConnected ? (isSyncing ? 'Syncing with Firestore...' : 'Connected to Firestore Cloud Database') : 'Working in local cache mode'}
-            className={`hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border ${
-              isCloudConnected
-                ? 'bg-emerald-50/80 text-emerald-800 border-emerald-200/70'
-                : 'bg-amber-50/80 text-amber-800 border-amber-200/70'
-            }`}
-          >
-            {isSyncing ? (
-              <RefreshCw className="w-3.5 h-3.5 text-emerald-600 animate-spin" />
-            ) : isCloudConnected ? (
-              <Cloud className="w-3.5 h-3.5 text-emerald-600" />
-            ) : (
-              <CloudOff className="w-3.5 h-3.5 text-amber-600" />
-            )}
-            <span className="hidden lg:inline">{isSyncing ? 'Syncing...' : isCloudConnected ? 'Cloud DB Live' : 'Offline'}</span>
-          </div>
-
           {/* Quick Month Switcher Widget */}
           <div className="flex items-center bg-white/60 backdrop-blur-md border border-white/70 rounded-full px-1.5 py-1 shadow-xs">
             <button

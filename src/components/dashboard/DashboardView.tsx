@@ -1,7 +1,7 @@
 import React from 'react';
 import { useFeeData } from '../../context/FeeDataContext';
 import { RouteState } from '../../types';
-import { Users, CheckCircle2, AlertCircle, ChevronRight, TrendingUp, Sparkles, BookOpen, Calendar } from 'lucide-react';
+import { ChevronRight, Sparkles } from 'lucide-react';
 
 interface DashboardViewProps {
   onNavigate: (route: RouteState) => void;
@@ -9,7 +9,7 @@ interface DashboardViewProps {
 }
 
 export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onOpenAddStudent }) => {
-  const { classes, getOverallStats, getClassStats, settings, activeMonth, monthsList, setActiveMonth } = useFeeData();
+  const { classes, getOverallStats, getClassStats, settings, activeMonth } = useFeeData();
   const overall = getOverallStats();
 
   return (
@@ -40,80 +40,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onOpen
           >
             Add Student
           </button>
-        </div>
-      </div>
-
-      {/* Month Selection Carousel / Tabs */}
-      <div className="bg-white/40 backdrop-blur-md rounded-2xl border border-white/60 p-2.5 shadow-sm">
-        <div className="flex items-center justify-between px-2 mb-2">
-          <div className="flex items-center gap-1.5 text-xs font-bold text-[#0f172a]">
-            <Calendar className="w-4 h-4 text-slate-700" />
-            <span>Select Fee Collection Month:</span>
-          </div>
-          <span className="text-[11px] text-[#64748b]">
-            Showing <span className="font-bold text-slate-900">{activeMonth}</span> status
-          </span>
-        </div>
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-thin">
-          {monthsList.map((m) => {
-            const isCurrent = m === activeMonth;
-            return (
-              <button
-                key={m}
-                id={`month-pill-${m}`}
-                onClick={() => setActiveMonth(m)}
-                className={`min-h-[36px] px-3.5 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all flex-shrink-0 ${
-                  isCurrent
-                    ? 'bg-[#334155] text-white shadow-md'
-                    : 'bg-white/60 text-slate-700 hover:bg-white border border-white/70'
-                }`}
-              >
-                {m}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* 4 Frosted Glass Stat Cards Grid */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
-        <div className="bg-white/40 backdrop-blur-md p-5 sm:p-6 rounded-3xl border border-white/60 shadow-xl flex flex-col justify-between">
-          <div>
-            <p className="text-xs sm:text-sm text-[#64748b] font-medium">Total Students</p>
-            <p className="text-2xl sm:text-3xl font-bold text-[#0f172a] mt-1">{overall.total}</p>
-          </div>
-          <p className="text-[11px] text-[#64748b] mt-3">Across {classes.length} classes</p>
-        </div>
-
-        <div className="bg-white/40 backdrop-blur-md p-5 sm:p-6 rounded-3xl border border-white/60 shadow-xl flex flex-col justify-between">
-          <div>
-            <p className="text-xs sm:text-sm text-[#64748b] font-medium">{activeMonth} Paid</p>
-            <p className="text-2xl sm:text-3xl font-bold text-emerald-600 mt-1">{overall.paid}</p>
-          </div>
-          <div className="mt-3 inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 bg-emerald-100/60 px-2 py-0.5 rounded-md self-start border border-emerald-200/50">
-            <CheckCircle2 className="w-3 h-3" /> {overall.percentage}% paid
-          </div>
-        </div>
-
-        <div className="bg-white/40 backdrop-blur-md p-5 sm:p-6 rounded-3xl border border-white/60 shadow-xl flex flex-col justify-between">
-          <div>
-            <p className="text-xs sm:text-sm text-[#64748b] font-medium">{activeMonth} Unpaid</p>
-            <p className="text-2xl sm:text-3xl font-bold text-rose-600 mt-1">{overall.unpaid}</p>
-          </div>
-          <p className="text-[11px] text-rose-700 font-medium mt-3">Pending for {activeMonth}</p>
-        </div>
-
-        <div className="bg-white/40 backdrop-blur-md p-5 sm:p-6 rounded-3xl border border-white/60 shadow-xl flex flex-col justify-between">
-          <div>
-            <p className="text-xs sm:text-sm text-[#64748b] font-medium">Collection Rate</p>
-            <div className="flex items-end space-x-1.5 mt-1">
-              <p className="text-2xl sm:text-3xl font-bold text-[#334155]">{overall.percentage}%</p>
-              <p className="text-xs text-[#64748b] mb-1">for {activeMonth}</p>
-            </div>
-          </div>
-          <div className="w-full bg-white/60 h-2 rounded-full mt-3 overflow-hidden border border-white/40">
-            <div className="bg-[#334155] h-full rounded-full transition-all duration-500" style={{ width: `${overall.percentage}%` }}></div>
-          </div>
         </div>
       </div>
 

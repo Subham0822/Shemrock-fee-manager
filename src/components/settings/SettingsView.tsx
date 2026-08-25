@@ -1,21 +1,15 @@
 import React, { useState } from 'react';
 import { useFeeData } from '../../context/FeeDataContext';
-import { School, Database, Download, Check, AlertTriangle, Users, BookOpen, RefreshCw, Key, Trash2 } from 'lucide-react';
+import { School, Download, Check, AlertTriangle, Trash2 } from 'lucide-react';
 
 export const SettingsView: React.FC = () => {
   const {
     settings,
     updateSettings,
     students,
-    classes,
-    getOverallStats,
     activeMonth,
     monthsList,
     getStudentMonthRecord,
-    isCloudConnected,
-    isSyncing,
-    cloudError,
-    retryConnection,
     deleteAllStudents,
   } = useFeeData();
 
@@ -24,8 +18,6 @@ export const SettingsView: React.FC = () => {
   const [term, setTerm] = useState(settings.term || '');
   const [isSaved, setIsSaved] = useState(false);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
-
-  const stats = getOverallStats(activeMonth);
 
   const handleSaveSettings = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -149,100 +141,6 @@ export const SettingsView: React.FC = () => {
           </button>
         </div>
       </form>
-
-      {/* Database Verification & Status Card */}
-      <div className="bg-white/40 backdrop-blur-md rounded-3xl border border-white/60 p-5 sm:p-6 shadow-xl space-y-4">
-        <div className="flex items-center justify-between pb-2 border-b border-white/50">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-xl bg-emerald-100/80 border border-emerald-200/60 text-emerald-700 flex items-center justify-center shadow-xs">
-              <Database className="w-4 h-4" />
-            </div>
-            <div>
-              <h3 className="text-sm font-bold text-[#0f172a]">Live Firestore Database State</h3>
-              <p className="text-xs text-[#64748b]">Database ID: ai-studio-schoolfeemanager-ca25bf31-1bd9-4c48-9b77-35cb8db6e41f</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              id="retry-db-connection-btn"
-              type="button"
-              onClick={retryConnection}
-              disabled={isSyncing}
-              className="px-3 py-1 bg-white/80 hover:bg-white border border-slate-300/80 rounded-xl text-xs font-semibold text-slate-700 shadow-xs flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
-              title="Test & reconnect to Firestore"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin text-slate-500' : 'text-slate-700'}`} />
-              <span>{isSyncing ? 'Testing...' : 'Test Connection'}</span>
-            </button>
-            <span className={`px-2.5 py-1 rounded-xl text-xs font-bold border shadow-xs ${
-              isCloudConnected ? 'bg-emerald-50/90 text-emerald-800 border-emerald-200' : 'bg-amber-50/90 text-amber-800 border-amber-200'
-            }`}>
-              {isSyncing ? 'Syncing...' : isCloudConnected ? '● Cloud Live' : '○ Offline Cache'}
-            </span>
-          </div>
-        </div>
-
-        {/* Real-time Error Alert if Firestore Connection failed */}
-        {cloudError && (
-          <div className="p-3.5 rounded-2xl bg-amber-50/90 border border-amber-200 text-amber-900 space-y-1.5 text-xs">
-            <div className="flex items-center gap-2 font-bold text-amber-950">
-              <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0" />
-              <span>Firestore Connection Note</span>
-            </div>
-            <p className="font-mono text-[11px] bg-white/70 p-2 rounded-lg border border-amber-200/70 text-amber-900 break-words">
-              {cloudError}
-            </p>
-          </div>
-        )}
-
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-center pt-1">
-          <div className="p-3 bg-white/50 rounded-2xl border border-white/60">
-            <div className="text-xs text-[#64748b] font-medium flex items-center justify-center gap-1">
-              <BookOpen className="w-3.5 h-3.5" /> Classes
-            </div>
-            <div className="text-base font-black text-[#0f172a] mt-0.5">{classes.length}</div>
-          </div>
-
-          <div className="p-3 bg-white/50 rounded-2xl border border-white/60">
-            <div className="text-xs text-[#64748b] font-medium flex items-center justify-center gap-1">
-              <Users className="w-3.5 h-3.5" /> Students
-            </div>
-            <div className="text-base font-black text-[#0f172a] mt-0.5">{stats.total}</div>
-          </div>
-
-          <div className="p-3 bg-emerald-50/70 rounded-2xl border border-emerald-100">
-            <div className="text-xs text-emerald-800 font-medium">{activeMonth} Paid</div>
-            <div className="text-base font-black text-emerald-700 mt-0.5">{stats.paid}</div>
-          </div>
-
-          <div className="p-3 bg-rose-50/70 rounded-2xl border border-rose-100">
-            <div className="text-xs text-rose-800 font-medium">{activeMonth} Unpaid</div>
-            <div className="text-base font-black text-rose-700 mt-0.5">{stats.unpaid}</div>
-          </div>
-        </div>
-
-        {/* Localhost & Firebase Checklist Accordion */}
-        <div className="pt-2 border-t border-white/50">
-          <div className="bg-white/50 rounded-2xl p-3.5 border border-white/60 space-y-2">
-            <div className="flex items-center gap-2 text-xs font-bold text-slate-800">
-              <Key className="w-4 h-4 text-slate-600" />
-              <span>Firebase Project Configuration Info</span>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-slate-700">
-              <div className="p-2 bg-white/70 rounded-xl border border-white/80">
-                <span className="font-semibold text-slate-500 block text-[11px] uppercase">Project ID</span>
-                <span className="font-mono font-medium text-slate-800">ringed-tesla-htvkm</span>
-              </div>
-              <div className="p-2 bg-white/70 rounded-xl border border-white/80">
-                <span className="font-semibold text-slate-500 block text-[11px] uppercase">Named Database</span>
-                <span className="font-mono font-medium text-slate-800 truncate block" title="ai-studio-schoolfeemanager-ca25bf31-1bd9-4c48-9b77-35cb8db6e41f">
-                  ai-studio-schoolfeemanager...
-                </span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
 
       {/* Data Management Actions */}
       <div className="bg-white/40 backdrop-blur-md rounded-3xl border border-white/60 p-5 sm:p-6 shadow-xl space-y-4">

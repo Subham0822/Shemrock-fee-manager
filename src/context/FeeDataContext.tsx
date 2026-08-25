@@ -157,24 +157,6 @@ export const FeeDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
       }
     });
 
-    // One-time automatic purge of pre-seeded student records
-    const purgeKey = 'sfm_purged_all_students_v1';
-    if (!sessionStorage.getItem(purgeKey)) {
-      sessionStorage.setItem(purgeKey, 'true');
-      getDocs(collection(db, 'students')).then(async (snap) => {
-        if (!snap.empty) {
-          const docs = snap.docs;
-          const batchSize = 300;
-          for (let i = 0; i < docs.length; i += batchSize) {
-            const batch = writeBatch(db);
-            const chunk = docs.slice(i, i + batchSize);
-            chunk.forEach((d) => batch.delete(d.ref));
-            await batch.commit();
-          }
-        }
-      }).catch(() => {});
-    }
-
     // 1. Settings listener
     const settingsDocRef = doc(db, 'settings', 'school');
     const unsubSettings = onSnapshot(

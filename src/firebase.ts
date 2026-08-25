@@ -1,11 +1,6 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getFirestore, doc, getDocFromServer } from 'firebase/firestore';
-
-// Load platform-injected applet config if present, or fallback to empty
-const appletConfigs = import.meta.glob<{ default: Record<string, string> }>('/firebase-applet-config.json', {
-  eager: true,
-});
-const rawFirebaseConfig = appletConfigs['/firebase-applet-config.json']?.default || {};
+import rawFirebaseConfig from '../firebase-applet-config.json';
 
 const config = {
   projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || rawFirebaseConfig.projectId || '',

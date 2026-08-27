@@ -13,7 +13,10 @@ import {
   Sparkles,
   Layers,
   Undo2,
+  Calendar,
+  CalendarDays,
 } from 'lucide-react';
+import { getStudentPackagedDueInfo, formatDueDate, isDueDateInMonth } from '../../utils/dateUtils';
 
 interface StudentsDirectoryViewProps {
   onOpenPayment: (student: Student, month?: string) => void;
@@ -40,24 +43,41 @@ export const StudentsDirectoryView: React.FC<StudentsDirectoryViewProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedClassId, setSelectedClassId] = useState<string>('ALL');
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'PENDING' | 'CLEARED'>('ALL');
+  const [admissionTypeFilter, setAdmissionTypeFilter] = useState<'ALL' | 'PACKAGED' | 'UNPACKAGED'>('ALL');
 
-  // Compute pending status for any student based on academic months or package intervals
+  // Compute pending status & packaged due info for any student
   const getStudentDueInfo = useMemo(() => {
     const activeIdx = monthsList.indexOf(activeMonth);
     const dueMonthsRange = activeIdx >= 0 ? monthsList.slice(0, activeIdx + 1) : monthsList;
 
     return (student: Student) => {
       if (student.admissionType === 'PACKAGED') {
+        const packagedInfo = getStudentPackagedDueInfo(student, activeMonth);
         const unpaidIntervals = PACKAGE_INTERVALS.filter(
           (i) => getStudentPackageRecord(student, i.key).feeStatus !== 'PAID'
         );
         const isPending = unpaidIntervals.length > 0;
+        
+        // Find if this student has an interval due in activeMonth
+        const intervalDueThisMonth = packagedInfo.intervalsDueThisMonth[0] || null;
+
         return {
           isPackaged: true,
-          pendingMonths: unpaidIntervals.map((i) => i.shortName),
+          pendingMonths: unpaidIntervals.map((i) => {
+            const rec = getStudentPackageRecord(student, i.key);
+            if (rec.dueDate) {
+              return `${i.shortName} (${formatDueDate(rec.dueDate, false)})`;
+            }
+            return i.shortName;
+          }),
+          pendingIntervalKeys: unpaidIntervals.map((i) => i.key),
           pendingCount: unpaidIntervals.length,
           isPending,
           isCleared: !isPending,
+          packagedInfo,
+          intervalDueThisMonth,
+          hasDueThisMonth: packagedInfo.hasDueThisMonth,
+          hasUnpaidDueThisMonth: packagedInfo.hasUnpaidDueThisMonth,
         };
       }
 
@@ -71,14 +91,20 @@ export const StudentsDirectoryView: React.FC<StudentsDirectoryViewProps> = ({
         pendingCount: pendingMonths.length,
         isPending,
         isCleared: !isPending,
+        packagedInfo: null,
+        intervalDueThisMonth: null,
+        hasDueThisMonth: false,
+        hasUnpaidDueThisMonth: false,
       };
     };
   }, [monthsList, activeMonth, getStudentMonthRecord, getStudentPackageRecord]);
 
-  // Overall counts
+  // Overall counts & Admission Type breakdown
   const summary = useMemo(() => {
     let pendingCount = 0;
     let clearedCount = 0;
+    let packagedCount = 0;
+    let unpackagedCount = 0;
 
     students.forEach((s) => {
       const info = getStudentDueInfo(s);
@@ -87,12 +113,19 @@ export const StudentsDirectoryView: React.FC<StudentsDirectoryViewProps> = ({
       } else {
         clearedCount += 1;
       }
+      if (s.admissionType === 'PACKAGED') {
+        packagedCount += 1;
+      } else {
+        unpackagedCount += 1;
+      }
     });
 
     return {
       total: students.length,
       pending: pendingCount,
       cleared: clearedCount,
+      packagedCount,
+      unpackagedCount,
     };
   }, [students, getStudentDueInfo]);
 
@@ -101,6 +134,10 @@ export const StudentsDirectoryView: React.FC<StudentsDirectoryViewProps> = ({
     const query = searchQuery.trim().toLowerCase();
 
     return students.filter((s) => {
+      // Admission Type filter
+      if (admissionTypeFilter === 'PACKAGED' && s.admissionType !== 'PACKAGED') return false;
+      if (admissionTypeFilter === 'UNPACKAGED' && s.admissionType === 'PACKAGED') return false;
+
       // Class filter
       if (selectedClassId !== 'ALL' && s.classId !== selectedClassId) return false;
 
@@ -121,7 +158,7 @@ export const StudentsDirectoryView: React.FC<StudentsDirectoryViewProps> = ({
 
       return true;
     });
-  }, [students, searchQuery, selectedClassId, statusFilter, getStudentDueInfo]);
+  }, [students, searchQuery, selectedClassId, statusFilter, admissionTypeFilter, getStudentDueInfo]);
 
   return (
     <div className="space-y-3.5 pb-20 animate-in fade-in duration-200">
@@ -133,7 +170,7 @@ export const StudentsDirectoryView: React.FC<StudentsDirectoryViewProps> = ({
               Student Directory
             </h2>
             <p className="text-xs text-[#64748b] mt-0.5">
-              Live dues tracking and payment status across all students
+              Live dues tracking, interval schedules, and fee status
             </p>
           </div>
 
@@ -155,6 +192,36 @@ export const StudentsDirectoryView: React.FC<StudentsDirectoryViewProps> = ({
             <span>Total:</span>
             <strong className="text-slate-900 font-bold">{summary.total}</strong>
           </div>
+
+          {/* Packaged filter badge */}
+          <button
+            type="button"
+            onClick={() => setAdmissionTypeFilter(admissionTypeFilter === 'PACKAGED' ? 'ALL' : 'PACKAGED')}
+            className={`px-3 py-1.5 rounded-xl text-xs flex items-center gap-1.5 transition-all shadow-xs flex-shrink-0 active:scale-95 border ${
+              admissionTypeFilter === 'PACKAGED'
+                ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
+                : 'bg-indigo-50/80 text-indigo-800 border-indigo-200/80 hover:bg-indigo-100'
+            }`}
+          >
+            <Layers className="w-3.5 h-3.5" />
+            <span>Packaged:</span>
+            <strong className="font-bold">{summary.packagedCount}</strong>
+          </button>
+
+          {/* Unpackaged filter badge */}
+          <button
+            type="button"
+            onClick={() => setAdmissionTypeFilter(admissionTypeFilter === 'UNPACKAGED' ? 'ALL' : 'UNPACKAGED')}
+            className={`px-3 py-1.5 rounded-xl text-xs flex items-center gap-1.5 transition-all shadow-xs flex-shrink-0 active:scale-95 border ${
+              admissionTypeFilter === 'UNPACKAGED'
+                ? 'bg-slate-700 text-white border-slate-700 shadow-sm'
+                : 'bg-white/70 text-slate-700 border-white/80 hover:bg-white'
+            }`}
+          >
+            <Calendar className="w-3.5 h-3.5 text-slate-500" />
+            <span>Unpackaged:</span>
+            <strong className="font-bold">{summary.unpackagedCount}</strong>
+          </button>
 
           <button
             type="button"
@@ -209,10 +276,13 @@ export const StudentsDirectoryView: React.FC<StudentsDirectoryViewProps> = ({
           )}
         </div>
 
-        {/* Filter Row: Month, Class, and Status Tabs */}
-        <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+        {/* Filter Row 1: Month, Class, & Admission Type Filter */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
           {/* Month Select */}
-          <div className="w-full sm:w-40 flex-shrink-0">
+          <div>
+            <label htmlFor="global-month-filter-select" className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
+              Active Month
+            </label>
             <select
               id="global-month-filter-select"
               value={activeMonth}
@@ -221,14 +291,17 @@ export const StudentsDirectoryView: React.FC<StudentsDirectoryViewProps> = ({
             >
               {monthsList.map((m) => (
                 <option key={m} value={m}>
-                  {m} {m === 'July' ? '• Exam' : ''}
+                  {m} {m === 'July' ? '• Exam Fee' : ''}
                 </option>
               ))}
             </select>
           </div>
 
           {/* Class Select */}
-          <div className="w-full sm:w-44 flex-shrink-0">
+          <div>
+            <label htmlFor="global-class-filter-select" className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
+              Class
+            </label>
             <select
               id="global-class-filter-select"
               value={selectedClassId}
@@ -244,24 +317,43 @@ export const StudentsDirectoryView: React.FC<StudentsDirectoryViewProps> = ({
             </select>
           </div>
 
-          {/* Status Tabs */}
-          <div className="grid grid-cols-3 gap-1.5 flex-1">
+          {/* Admission Type Select */}
+          <div>
+            <label htmlFor="global-admission-filter-select" className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
+              Admission Type
+            </label>
+            <select
+              id="global-admission-filter-select"
+              value={admissionTypeFilter}
+              onChange={(e) => setAdmissionTypeFilter(e.target.value as 'ALL' | 'PACKAGED' | 'UNPACKAGED')}
+              className="w-full px-2.5 py-2 rounded-xl border border-white/90 text-xs font-semibold bg-white/80 backdrop-blur-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 shadow-xs"
+            >
+              <option value="ALL">All Types ({summary.total})</option>
+              <option value="PACKAGED">Packaged Only ({summary.packagedCount})</option>
+              <option value="UNPACKAGED">Unpackaged Only ({summary.unpackagedCount})</option>
+            </select>
+          </div>
+        </div>
+
+        {/* Filter Row 2: Status Tabs */}
+        <div className="pt-1">
+          <div className="grid grid-cols-3 gap-1.5">
             <button
               type="button"
               onClick={() => setStatusFilter('ALL')}
-              className={`min-h-[38px] py-1 px-2 rounded-xl text-xs font-bold transition-all active:scale-95 ${
+              className={`min-h-[36px] py-1 px-2 rounded-xl text-xs font-bold transition-all active:scale-95 ${
                 statusFilter === 'ALL'
                   ? 'bg-slate-800 text-white shadow-xs'
                   : 'bg-white/70 text-slate-600 hover:bg-white border border-white/80'
               }`}
             >
-              All ({summary.total})
+              All Status ({summary.total})
             </button>
 
             <button
               type="button"
               onClick={() => setStatusFilter('PENDING')}
-              className={`min-h-[38px] py-1 px-2 rounded-xl text-xs font-bold transition-all active:scale-95 ${
+              className={`min-h-[36px] py-1 px-2 rounded-xl text-xs font-bold transition-all active:scale-95 ${
                 statusFilter === 'PENDING'
                   ? 'bg-rose-600 text-white shadow-xs'
                   : 'bg-rose-50/70 text-rose-800 hover:bg-rose-100 border border-rose-200/60'
@@ -273,7 +365,7 @@ export const StudentsDirectoryView: React.FC<StudentsDirectoryViewProps> = ({
             <button
               type="button"
               onClick={() => setStatusFilter('CLEARED')}
-              className={`min-h-[38px] py-1 px-2 rounded-xl text-xs font-bold transition-all active:scale-95 ${
+              className={`min-h-[36px] py-1 px-2 rounded-xl text-xs font-bold transition-all active:scale-95 ${
                 statusFilter === 'CLEARED'
                   ? 'bg-emerald-600 text-white shadow-xs'
                   : 'bg-emerald-50/70 text-emerald-800 hover:bg-emerald-100 border border-emerald-200/60'
@@ -289,15 +381,17 @@ export const StudentsDirectoryView: React.FC<StudentsDirectoryViewProps> = ({
       <div className="flex items-center justify-between text-xs text-[#64748b] px-1">
         <span>
           Showing <strong>{filteredStudents.length}</strong> of {students.length} students
+          {admissionTypeFilter !== 'ALL' && ` (${admissionTypeFilter.toLowerCase()})`}
         </span>
-        {(selectedClassId !== 'ALL' || statusFilter !== 'ALL' || searchQuery) && (
+        {(selectedClassId !== 'ALL' || statusFilter !== 'ALL' || admissionTypeFilter !== 'ALL' || searchQuery) && (
           <button
             onClick={() => {
               setSelectedClassId('ALL');
               setStatusFilter('ALL');
+              setAdmissionTypeFilter('ALL');
               setSearchQuery('');
             }}
-            className="text-xs font-bold text-slate-700 hover:text-slate-900"
+            className="text-xs font-bold text-slate-700 hover:text-slate-900 cursor-pointer"
           >
             Reset Filters
           </button>
@@ -313,7 +407,7 @@ export const StudentsDirectoryView: React.FC<StudentsDirectoryViewProps> = ({
           <div>
             <h3 className="text-sm font-bold text-[#0f172a]">No students found</h3>
             <p className="text-xs text-[#64748b] mt-0.5 max-w-xs mx-auto">
-              Try adjusting your search query or reset the class & status filters.
+              Try adjusting your search query or reset the class, status, and admission type filters.
             </p>
           </div>
         </div>
@@ -324,6 +418,7 @@ export const StudentsDirectoryView: React.FC<StudentsDirectoryViewProps> = ({
             {filteredStudents.map((student) => {
               const dueInfo = getStudentDueInfo(student);
               const isPending = dueInfo.isPending;
+              const isPackaged = student.admissionType === 'PACKAGED';
 
               return (
                 <div
@@ -345,7 +440,7 @@ export const StudentsDirectoryView: React.FC<StudentsDirectoryViewProps> = ({
                         <h4 className="text-sm font-bold text-[#0f172a] leading-snug">
                           {student.name}
                         </h4>
-                        {student.admissionType === 'PACKAGED' && (
+                        {isPackaged && (
                           <span className="text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200 px-1.5 py-0.2 rounded-md">
                             Packaged
                           </span>
@@ -363,24 +458,47 @@ export const StudentsDirectoryView: React.FC<StudentsDirectoryViewProps> = ({
                       {isPending ? (
                         <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold bg-rose-100/90 text-rose-800 border border-rose-200">
                           <AlertCircle className="w-3.5 h-3.5 text-rose-600" />
-                          {dueInfo.isPackaged
+                          {isPackaged
                             ? `${dueInfo.pendingCount} Interval${dueInfo.pendingCount === 1 ? '' : 's'} Due`
                             : `${dueInfo.pendingCount} ${dueInfo.pendingCount === 1 ? 'Month' : 'Months'} Pending`}
                         </span>
                       ) : (
                         <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold bg-emerald-100/90 text-emerald-800 border border-emerald-200">
                           <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                          {dueInfo.isPackaged ? 'Package Cleared' : 'Fees Cleared'}
+                          {isPackaged ? 'Package Cleared' : 'Fees Cleared'}
                         </span>
                       )}
                     </div>
                   </div>
 
-                  {/* Middle Row: Pending Months Breakdown */}
+                  {/* Packaged Specific Month Due Date Banner */}
+                  {isPackaged && dueInfo.intervalDueThisMonth && (
+                    <div className={`mt-2 p-2.5 rounded-xl border flex items-center justify-between gap-2 text-xs ${
+                      dueInfo.intervalDueThisMonth.isPaid
+                        ? 'bg-emerald-50/70 border-emerald-200 text-emerald-900'
+                        : 'bg-amber-50/80 border-amber-200 text-amber-950 font-medium'
+                    }`}>
+                      <div className="flex items-center gap-1.5">
+                        <CalendarDays className={`w-3.5 h-3.5 flex-shrink-0 ${dueInfo.intervalDueThisMonth.isPaid ? 'text-emerald-600' : 'text-amber-600'}`} />
+                        <span>
+                          <strong>{dueInfo.intervalDueThisMonth.shortName}</strong>: Due <strong>{dueInfo.intervalDueThisMonth.formattedDueDate}</strong> ({activeMonth})
+                        </span>
+                      </div>
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                        dueInfo.intervalDueThisMonth.isPaid
+                          ? 'bg-emerald-100 text-emerald-800'
+                          : 'bg-amber-200/90 text-amber-900'
+                      }`}>
+                        {dueInfo.intervalDueThisMonth.isPaid ? 'Paid' : 'Due this month'}
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Middle Row: Pending Breakdown */}
                   <div className="mt-2 text-xs">
                     {isPending ? (
                       <div className="flex items-center gap-1.5 text-rose-900 bg-rose-50/80 border border-rose-100/80 px-2.5 py-1.5 rounded-xl">
-                        {dueInfo.isPackaged ? (
+                        {isPackaged ? (
                           <Layers className="w-3.5 h-3.5 text-indigo-600 flex-shrink-0" />
                         ) : (
                           <Clock className="w-3.5 h-3.5 text-rose-600 flex-shrink-0" />
@@ -391,7 +509,7 @@ export const StudentsDirectoryView: React.FC<StudentsDirectoryViewProps> = ({
                       </div>
                     ) : (
                       <div className="text-[11px] text-emerald-800 font-medium px-0.5">
-                        {dueInfo.isPackaged
+                        {isPackaged
                           ? '✓ All 3 intervals paid in full'
                           : `✓ All fees paid up to date (${activeMonth})`}
                       </div>
@@ -399,7 +517,7 @@ export const StudentsDirectoryView: React.FC<StudentsDirectoryViewProps> = ({
                   </div>
 
                   {/* July Special Exam Fee Row (Mobile - only for July & Unpackaged) */}
-                  {activeMonth === 'July' && student.admissionType !== 'PACKAGED' && (
+                  {activeMonth === 'July' && !isPackaged && (
                     <div className="mt-2.5 pt-2 border-t border-slate-100/80 flex items-center justify-between gap-2 bg-purple-50/50 p-2.5 rounded-xl border border-purple-100/60">
                       <div className="flex items-center gap-1.5">
                         <span className="text-xs font-bold text-slate-700">Exam Fees:</span>
@@ -449,7 +567,7 @@ export const StudentsDirectoryView: React.FC<StudentsDirectoryViewProps> = ({
                       {isPending ? (
                         <button
                           type="button"
-                          onClick={() => onOpenPayment(student, dueInfo.pendingMonths[0])}
+                          onClick={() => onOpenPayment(student, isPackaged ? undefined : dueInfo.pendingMonths[0])}
                           className="min-h-[40px] px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-sm shadow-emerald-600/20 active:scale-95 transition-all"
                         >
                           <Check className="w-3.5 h-3.5 stroke-[3]" /> Pay Fees
@@ -457,7 +575,7 @@ export const StudentsDirectoryView: React.FC<StudentsDirectoryViewProps> = ({
                       ) : (
                         <button
                           type="button"
-                          onClick={() => onOpenPayment(student, activeMonth)}
+                          onClick={() => onOpenPayment(student, isPackaged ? undefined : activeMonth)}
                           className="min-h-[40px] px-3 py-1.5 bg-white/80 hover:bg-white text-slate-700 rounded-xl text-xs font-semibold flex items-center gap-1 border border-slate-200/80 shadow-2xs active:scale-95 transition-all"
                         >
                           <Sparkles className="w-3 h-3 text-indigo-600" /> Advance
@@ -481,7 +599,7 @@ export const StudentsDirectoryView: React.FC<StudentsDirectoryViewProps> = ({
                   {activeMonth === 'July' && (
                     <th className="px-6 py-3.5">Exam Fees</th>
                   )}
-                  <th className="px-6 py-3.5">Pending Schedule</th>
+                  <th className="px-6 py-3.5">Schedule / Month Due Date</th>
                   <th className="px-6 py-3.5 text-right">Action</th>
                 </tr>
               </thead>
@@ -489,12 +607,14 @@ export const StudentsDirectoryView: React.FC<StudentsDirectoryViewProps> = ({
                 {filteredStudents.map((student) => {
                   const dueInfo = getStudentDueInfo(student);
                   const isPending = dueInfo.isPending;
+                  const isPackaged = student.admissionType === 'PACKAGED';
 
                   return (
                     <tr
                       key={student.id}
                       className="hover:bg-white/40 transition-colors"
                     >
+                      {/* Student Name */}
                       <td className="px-6 py-3.5">
                         <div className="flex items-center gap-2">
                           <button
@@ -503,36 +623,58 @@ export const StudentsDirectoryView: React.FC<StudentsDirectoryViewProps> = ({
                           >
                             {student.name}
                           </button>
-                          {student.admissionType === 'PACKAGED' && (
+                          {isPackaged && (
                             <span className="text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200 px-1.5 py-0.2 rounded-md">
                               Packaged
                             </span>
                           )}
                         </div>
                       </td>
+
+                      {/* Class */}
                       <td className="px-6 py-3.5 text-xs text-slate-700 font-medium">
                         <span className="bg-white px-2.5 py-1 rounded-md border border-slate-200/80 text-slate-800 shadow-2xs font-semibold">
                           {student.className}
                         </span>
                       </td>
+
+                      {/* Status & Dues */}
                       <td className="px-6 py-3.5">
                         {isPending ? (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg text-xs font-bold bg-rose-100 text-rose-800 border border-rose-200">
-                            <AlertCircle className="w-3.5 h-3.5 text-rose-600" />
-                            {dueInfo.isPackaged
-                              ? `${dueInfo.pendingCount} Interval${dueInfo.pendingCount === 1 ? '' : 's'} Due`
-                              : `${dueInfo.pendingCount} ${dueInfo.pendingCount === 1 ? 'Month' : 'Months'} Pending`}
-                          </span>
+                          <div className="flex flex-col gap-1">
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg text-xs font-bold bg-rose-100 text-rose-800 border border-rose-200 w-fit">
+                              <AlertCircle className="w-3.5 h-3.5 text-rose-600" />
+                              {isPackaged
+                                ? `${dueInfo.pendingCount} Interval${dueInfo.pendingCount === 1 ? '' : 's'} Due`
+                                : `${dueInfo.pendingCount} ${dueInfo.pendingCount === 1 ? 'Month' : 'Months'} Pending`}
+                            </span>
+                            {/* Packaged due reminder tag if due in this month */}
+                            {isPackaged && dueInfo.intervalDueThisMonth && !dueInfo.intervalDueThisMonth.isPaid && (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-200 w-fit">
+                                <CalendarDays className="w-3 h-3 text-amber-700" />
+                                {dueInfo.intervalDueThisMonth.shortName} Due: {dueInfo.intervalDueThisMonth.formattedDueDate}
+                              </span>
+                            )}
+                          </div>
                         ) : (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
-                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                            {dueInfo.isPackaged ? 'Package Cleared' : 'Fees Cleared'}
-                          </span>
+                          <div className="flex flex-col gap-1">
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-200 w-fit">
+                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                              {isPackaged ? 'Package Cleared' : 'Fees Cleared'}
+                            </span>
+                            {isPackaged && dueInfo.intervalDueThisMonth && dueInfo.intervalDueThisMonth.isPaid && (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold text-emerald-700 w-fit">
+                                ✓ {dueInfo.intervalDueThisMonth.shortName} Paid ({dueInfo.intervalDueThisMonth.formattedDueDate})
+                              </span>
+                            )}
+                          </div>
                         )}
                       </td>
+
+                      {/* Exam Fees (July only) */}
                       {activeMonth === 'July' && (
                         <td className="px-6 py-3.5">
-                          {student.admissionType === 'PACKAGED' ? (
+                          {isPackaged ? (
                             <span className="text-xs text-slate-400 font-medium">N/A (Packaged)</span>
                           ) : getStudentMonthRecord(student, 'July').examFeeStatus === 'PAID' ? (
                             <button
@@ -555,17 +697,50 @@ export const StudentsDirectoryView: React.FC<StudentsDirectoryViewProps> = ({
                           )}
                         </td>
                       )}
+
+                      {/* Pending Schedule / Packaged Month Due Date */}
                       <td className="px-6 py-3.5 text-xs">
-                        {isPending ? (
+                        {isPackaged ? (
+                          <div className="space-y-1">
+                            {/* Summary of intervals */}
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              {PACKAGE_INTERVALS.map((intMeta) => {
+                                const rec = getStudentPackageRecord(student, intMeta.key);
+                                const isPaid = rec.feeStatus === 'PAID';
+                                const isDueThis = isDueDateInMonth(rec.dueDate, activeMonth);
+
+                                return (
+                                  <span
+                                    key={intMeta.key}
+                                    className={`px-2 py-0.5 rounded-md text-[11px] font-medium border ${
+                                      isPaid
+                                        ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                                        : isDueThis
+                                        ? 'bg-amber-100 text-amber-950 border-amber-300 font-bold'
+                                        : 'bg-slate-100/80 text-slate-700 border-slate-200'
+                                    }`}
+                                    title={rec.dueDate ? `Due date: ${rec.dueDate}` : 'No due date set'}
+                                  >
+                                    {intMeta.shortName}
+                                    {rec.dueDate && `: ${formatDueDate(rec.dueDate, false)}`}
+                                    {isPaid ? ' ✓' : isDueThis ? ' (Due)' : ''}
+                                  </span>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        ) : isPending ? (
                           <span className="text-rose-900 font-medium bg-rose-50/70 border border-rose-200/50 px-2.5 py-1 rounded-md inline-block">
                             {dueInfo.pendingMonths.join(', ')}
                           </span>
                         ) : (
                           <span className="text-emerald-700 font-medium">
-                            {dueInfo.isPackaged ? 'All 3 intervals paid in full' : `Paid up to date (${activeMonth})`}
+                            Paid up to date ({activeMonth})
                           </span>
                         )}
                       </td>
+
+                      {/* Action */}
                       <td className="px-6 py-3.5 text-right">
                         <div className="flex items-center justify-end gap-2">
                           <button
@@ -578,7 +753,7 @@ export const StudentsDirectoryView: React.FC<StudentsDirectoryViewProps> = ({
                           {isPending ? (
                             <button
                               type="button"
-                              onClick={() => onOpenPayment(student, dueInfo.pendingMonths[0])}
+                              onClick={() => onOpenPayment(student, isPackaged ? undefined : dueInfo.pendingMonths[0])}
                               className="min-h-[36px] px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-sm shadow-emerald-600/20 active:scale-95 transition-all"
                             >
                               <Check className="w-3.5 h-3.5 stroke-[3]" /> Pay Fees
@@ -586,8 +761,8 @@ export const StudentsDirectoryView: React.FC<StudentsDirectoryViewProps> = ({
                           ) : (
                             <button
                               type="button"
-                              onClick={() => onOpenPayment(student, activeMonth)}
-                              className="min-h-[36px] px-3 py-1.5 bg-white/70 hover:bg-white text-slate-700 rounded-xl text-xs font-semibold flex items-center gap-1 border border-slate-200/80 shadow-2xs active:scale-95 transition-all"
+                              onClick={() => onOpenPayment(student, isPackaged ? undefined : activeMonth)}
+                              className="min-h-[36px] px-3.5 py-1.5 bg-white/70 hover:bg-white text-slate-700 rounded-xl text-xs font-semibold flex items-center gap-1 border border-slate-200/80 shadow-2xs active:scale-95 transition-all"
                             >
                               <Sparkles className="w-3 h-3 text-indigo-600" /> Advance
                             </button>

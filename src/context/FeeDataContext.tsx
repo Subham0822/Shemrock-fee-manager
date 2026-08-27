@@ -72,8 +72,22 @@ interface FeeDataContextType {
     note?: string
   ) => Promise<boolean>;
   markPackageIntervalUnpaid: (studentId: string, intervalKey: PackageIntervalKey) => Promise<boolean>;
-  addStudent: (data: { name: string; classId: string; admissionType?: AdmissionType }) => Promise<{ success: boolean; error?: string; student?: Student }>;
-  updateStudent: (studentId: string, data: { name: string; classId: string; admissionType?: AdmissionType }) => Promise<{ success: boolean; error?: string }>;
+  updatePackageIntervalDueDate: (studentId: string, intervalKey: PackageIntervalKey, dueDate: string | null) => Promise<boolean>;
+  addStudent: (data: {
+    name: string;
+    classId: string;
+    admissionType?: AdmissionType;
+    intervalDueDates?: Partial<Record<PackageIntervalKey, string | null>>;
+  }) => Promise<{ success: boolean; error?: string; student?: Student }>;
+  updateStudent: (
+    studentId: string,
+    data: {
+      name: string;
+      classId: string;
+      admissionType?: AdmissionType;
+      intervalDueDates?: Partial<Record<PackageIntervalKey, string | null>>;
+    }
+  ) => Promise<{ success: boolean; error?: string }>;
   deleteStudent: (studentId: string) => Promise<boolean>;
   deleteAllStudents: () => Promise<void>;
   updateSettings: (newSettings: Partial<SchoolSettings>) => Promise<void>;
@@ -630,6 +644,7 @@ export const FeeDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
         feeStatus: rec.feeStatus || 'UNPAID',
         paymentMode: rec.paymentMode || null,
         paymentDate: rec.paymentDate || null,
+        dueDate: rec.dueDate || null,
         paymentNote: rec.paymentNote,
       };
     }
@@ -639,6 +654,7 @@ export const FeeDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
       feeStatus: 'UNPAID',
       paymentMode: null,
       paymentDate: null,
+      dueDate: null,
     };
   }, []);
 
@@ -658,6 +674,7 @@ export const FeeDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
     intervalKeys.forEach((intervalKey) => {
       const intMeta = PACKAGE_INTERVALS.find((i) => i.key === intervalKey) || { key: intervalKey, name: intervalKey, shortName: intervalKey };
+      const existingRec = currentPackageRecords[intervalKey];
       updatedPackageRecords[intervalKey] = {
         intervalKey,
         intervalName: intMeta.name,
@@ -665,6 +682,7 @@ export const FeeDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
         paymentMode,
         paymentDate: dateStr,
         paymentNote: note?.trim() || undefined,
+        dueDate: existingRec?.dueDate || null,
       };
     });
 
@@ -711,6 +729,7 @@ export const FeeDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
     const intMeta = PACKAGE_INTERVALS.find((i) => i.key === intervalKey) || { key: intervalKey, name: intervalKey, shortName: intervalKey };
     const currentPackageRecords = targetStudent.packageRecords || {};
+    const existingRec = currentPackageRecords[intervalKey];
 
     const updatedRecord: PackageIntervalRecord = {
       intervalKey,
@@ -719,6 +738,7 @@ export const FeeDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
       paymentMode: null,
       paymentDate: null,
       paymentNote: undefined,
+      dueDate: existingRec?.dueDate || null,
     };
 
     const updatedPackageRecords = {
@@ -749,10 +769,62 @@ export const FeeDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
     }
   }, [students, showToast]);
 
+  const updatePackageIntervalDueDate = useCallback(async (
+    studentId: string,
+    intervalKey: PackageIntervalKey,
+    dueDate: string | null
+  ) => {
+    const targetStudent = studentsRef.current.find((s) => s.id === studentId) || students.find((s) => s.id === studentId);
+    if (!targetStudent) return false;
+
+    const intMeta = PACKAGE_INTERVALS.find((i) => i.key === intervalKey) || { key: intervalKey, name: intervalKey, shortName: intervalKey };
+    const currentPackageRecords = targetStudent.packageRecords || {};
+    const existingRec = currentPackageRecords[intervalKey] || {
+      intervalKey,
+      intervalName: intMeta.name,
+      feeStatus: 'UNPAID',
+      paymentMode: null,
+      paymentDate: null,
+      dueDate: null,
+    };
+
+    const updatedPackageRecords = {
+      ...currentPackageRecords,
+      [intervalKey]: {
+        ...existingRec,
+        dueDate: dueDate ? dueDate.trim() : null,
+      },
+    };
+
+    const updatedStudent: Student = {
+      ...targetStudent,
+      admissionType: 'PACKAGED',
+      packageRecords: updatedPackageRecords,
+      updatedAt: new Date().toISOString(),
+    };
+
+    studentsRef.current = studentsRef.current.map((s) => (s.id === studentId ? updatedStudent : s));
+    setStudents((prev) => prev.map((s) => (s.id === studentId ? updatedStudent : s)));
+    showToast(
+      'Due Date Updated',
+      `${targetStudent.name}'s ${intMeta.name} due date set to ${dueDate || 'None'}`,
+      'success'
+    );
+
+    try {
+      await setDoc(doc(db, 'students', studentId), sanitizeFirestoreData(updatedStudent));
+      return true;
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `students/${studentId}`);
+      return true;
+    }
+  }, [students, showToast]);
+
   const addStudent = useCallback(async (data: {
     name: string;
     classId: string;
     admissionType?: AdmissionType;
+    intervalDueDates?: Partial<Record<PackageIntervalKey, string | null>>;
   }) => {
     const trimmedName = data.name.trim();
 
@@ -782,12 +854,14 @@ export const FeeDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
     const initialPackageRecords: Partial<Record<PackageIntervalKey, PackageIntervalRecord>> = {};
     PACKAGE_INTERVALS.forEach((i) => {
+      const setDueDate = data.intervalDueDates?.[i.key];
       initialPackageRecords[i.key] = {
         intervalKey: i.key,
         intervalName: i.name,
         feeStatus: 'UNPAID',
         paymentMode: null,
         paymentDate: null,
+        dueDate: setDueDate ? setDueDate.trim() : null,
       };
     });
 
@@ -823,6 +897,7 @@ export const FeeDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
     name: string;
     classId: string;
     admissionType?: AdmissionType;
+    intervalDueDates?: Partial<Record<PackageIntervalKey, string | null>>;
   }) => {
     const trimmedName = data.name.trim();
 
@@ -837,16 +912,19 @@ export const FeeDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
     const now = new Date().toISOString();
     const admissionType: AdmissionType = data.admissionType || currentStudent.admissionType || 'UNPACKAGED';
 
-    let packageRecords = currentStudent.packageRecords;
-    if (admissionType === 'PACKAGED' && (!packageRecords || Object.keys(packageRecords).length === 0)) {
-      packageRecords = {};
+    let packageRecords = currentStudent.packageRecords ? { ...currentStudent.packageRecords } : {};
+    if (admissionType === 'PACKAGED') {
       PACKAGE_INTERVALS.forEach((i) => {
-        packageRecords![i.key] = {
+        const existing = packageRecords[i.key];
+        const newDueDate = data.intervalDueDates ? data.intervalDueDates[i.key] : existing?.dueDate;
+        packageRecords[i.key] = {
           intervalKey: i.key,
-          intervalName: i.name,
-          feeStatus: 'UNPAID',
-          paymentMode: null,
-          paymentDate: null,
+          intervalName: existing?.intervalName || i.name,
+          feeStatus: existing?.feeStatus || 'UNPAID',
+          paymentMode: existing?.paymentMode || null,
+          paymentDate: existing?.paymentDate || null,
+          dueDate: newDueDate !== undefined ? (newDueDate ? newDueDate.trim() : null) : (existing?.dueDate || null),
+          paymentNote: existing?.paymentNote,
         };
       });
     }
@@ -988,6 +1066,7 @@ export const FeeDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
       markPackageIntervalPaid,
       markPackageIntervalsPaid,
       markPackageIntervalUnpaid,
+      updatePackageIntervalDueDate,
       addStudent,
       updateStudent,
       deleteStudent,
@@ -1019,6 +1098,7 @@ export const FeeDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
       markPackageIntervalPaid,
       markPackageIntervalsPaid,
       markPackageIntervalUnpaid,
+      updatePackageIntervalDueDate,
       addStudent,
       updateStudent,
       deleteStudent,

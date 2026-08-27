@@ -12,6 +12,7 @@ export interface PackageIntervalRecord {
   feeStatus: FeeStatus;
   paymentMode: PaymentMode | null;
   paymentDate: string | null;
+  dueDate?: string | null; // e.g. '2026-07-15'
   paymentNote?: string;
 }
 

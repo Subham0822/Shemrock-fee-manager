@@ -12,9 +12,11 @@ import {
   Layers,
   Clock,
   CreditCard,
+  CalendarDays,
 } from 'lucide-react';
 import { Student, PackageIntervalKey, PACKAGE_INTERVALS } from '../../types';
 import { useFeeData } from '../../context/FeeDataContext';
+import { formatDueDate, isDueDateInMonth } from '../../utils/dateUtils';
 
 interface StudentDetailModalProps {
   student: Student | null;
@@ -39,6 +41,7 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
     getStudentMonthRecord,
     getStudentPackageRecord,
     markPackageIntervalUnpaid,
+    updatePackageIntervalDueDate,
     toggleExamFeeStatus,
   } = useFeeData();
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -238,19 +241,22 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
                   const rec = getStudentPackageRecord(student, intMeta.key);
                   const isPaid = rec.feeStatus === 'PAID';
                   const isInspected = inspectedInterval === intMeta.key;
+                  const isDueThisMonth = isDueDateInMonth(rec.dueDate, activeMonth);
 
                   return (
                     <button
                       key={intMeta.key}
                       type="button"
                       onClick={() => setInspectedInterval(intMeta.key)}
-                      className={`min-h-[58px] p-3 rounded-2xl text-xs font-bold border transition-all text-left flex flex-col justify-between active:scale-95 ${
+                      className={`min-h-[64px] p-2.5 sm:p-3 rounded-2xl text-xs font-bold border transition-all text-left flex flex-col justify-between active:scale-95 relative ${
                         isInspected
                           ? 'ring-2 ring-indigo-500/50 bg-white shadow-sm'
                           : 'bg-white/80 hover:bg-white'
                       } ${
                         isPaid
                           ? 'border-emerald-200 text-emerald-900 bg-emerald-50/40'
+                          : isDueThisMonth
+                          ? 'border-amber-300 text-amber-950 bg-amber-50/40'
                           : 'border-slate-200 text-slate-800'
                       }`}
                     >
@@ -258,13 +264,24 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
                         <span className="text-xs font-bold truncate text-[#0f172a]">
                           {intMeta.shortName}
                         </span>
-                        <span className="text-[10px] text-slate-400 font-medium">1/3</span>
+                        {isDueThisMonth && !isPaid && (
+                          <span className="px-1.5 py-0.2 rounded text-[9px] bg-amber-200/80 text-amber-900 font-bold">
+                            Due
+                          </span>
+                        )}
                       </div>
-                      <div className="mt-1 flex items-center gap-1 text-[11px]">
-                        {isPaid ? (
-                          <span className="font-bold text-emerald-700">✓ Paid</span>
-                        ) : (
-                          <span className="font-semibold text-rose-700">✗ Unpaid</span>
+                      <div className="mt-1 flex flex-col gap-0.5 text-[11px]">
+                        <div className="flex items-center gap-1">
+                          {isPaid ? (
+                            <span className="font-bold text-emerald-700">✓ Paid</span>
+                          ) : (
+                            <span className="font-semibold text-rose-700">✗ Unpaid</span>
+                          )}
+                        </div>
+                        {rec.dueDate && (
+                          <span className="text-[10px] text-slate-500 font-normal truncate">
+                            Due: {formatDueDate(rec.dueDate, false)}
+                          </span>
                         )}
                       </div>
                     </button>
@@ -273,26 +290,67 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
               </div>
 
               {/* Selected Interval Details */}
-              <div className="bg-white border border-white/90 rounded-xl p-3.5 text-xs space-y-2 shadow-xs">
+              <div className="bg-white border border-white/90 rounded-xl p-3.5 text-xs space-y-3 shadow-xs">
                 <div className="flex items-center justify-between">
                   <div>
                     <span className="font-bold text-slate-800 text-sm">
                       {inspectedIntervalRecord.intervalName}
                     </span>
                   </div>
-                  <span
-                    className={`px-2.5 py-0.5 rounded-md font-bold text-[11px] ${
-                      inspectedIntervalRecord.feeStatus === 'PAID'
-                        ? 'bg-emerald-100 text-emerald-800'
-                        : 'bg-rose-100 text-rose-800'
-                    }`}
-                  >
-                    {inspectedIntervalRecord.feeStatus}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    {inspectedIntervalRecord.dueDate && isDueDateInMonth(inspectedIntervalRecord.dueDate, activeMonth) && (
+                      <span className="px-2 py-0.5 rounded-md font-bold text-[10px] bg-amber-100 text-amber-900 border border-amber-200">
+                        Due in {activeMonth}
+                      </span>
+                    )}
+                    <span
+                      className={`px-2.5 py-0.5 rounded-md font-bold text-[11px] ${
+                        inspectedIntervalRecord.feeStatus === 'PAID'
+                          ? 'bg-emerald-100 text-emerald-800'
+                          : 'bg-rose-100 text-rose-800'
+                      }`}
+                    >
+                      {inspectedIntervalRecord.feeStatus}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Due Date Management Row */}
+                <div className="flex items-center justify-between gap-3 pt-2 border-t border-slate-100 bg-slate-50/50 p-2.5 rounded-xl">
+                  <div className="flex items-center gap-2">
+                    <CalendarDays className="w-4 h-4 text-indigo-600 flex-shrink-0" />
+                    <div>
+                      <div className="text-[10px] uppercase font-bold text-slate-400">Scheduled Due Date</div>
+                      <div className="text-xs font-semibold text-slate-700">
+                        {inspectedIntervalRecord.dueDate ? formatDueDate(inspectedIntervalRecord.dueDate, true) : 'No due date set'}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <input
+                      type="date"
+                      value={inspectedIntervalRecord.dueDate || ''}
+                      onChange={(e) => {
+                        updatePackageIntervalDueDate(student.id, inspectedInterval, e.target.value || null);
+                      }}
+                      className="text-xs px-2 py-1 bg-white border border-slate-200 rounded-lg text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 shadow-2xs"
+                      title="Change or set due date for this interval"
+                    />
+                    {inspectedIntervalRecord.dueDate && (
+                      <button
+                        type="button"
+                        onClick={() => updatePackageIntervalDueDate(student.id, inspectedInterval, null)}
+                        className="px-1.5 py-1 text-[10px] font-semibold text-slate-400 hover:text-rose-600 hover:bg-white rounded-md transition-colors"
+                        title="Clear due date"
+                      >
+                        Clear
+                      </button>
+                    )}
+                  </div>
                 </div>
 
                 {inspectedIntervalRecord.feeStatus === 'PAID' ? (
-                  <div className="space-y-2 pt-1 border-t border-slate-100">
+                  <div className="space-y-2 pt-1">
                     <div className="text-slate-600 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
                       <span>Mode: <strong className="text-slate-800">{inspectedIntervalRecord.paymentMode?.replace('_', ' ')}</strong></span>
                       <span>Payment Date: <strong className="text-slate-800">{inspectedIntervalRecord.paymentDate || 'Recorded'}</strong></span>

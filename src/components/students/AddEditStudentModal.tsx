@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { X, UserPlus, Edit3, AlertCircle, Layers, Calendar } from 'lucide-react';
-import { Student, AdmissionType } from '../../types';
+import { X, UserPlus, Edit3, AlertCircle, Layers, Calendar, Clock } from 'lucide-react';
+import { Student, AdmissionType, PackageIntervalKey, PACKAGE_INTERVALS } from '../../types';
 import { useFeeData } from '../../context/FeeDataContext';
 
 interface AddEditStudentModalProps {
@@ -22,6 +22,21 @@ export const AddEditStudentModal: React.FC<AddEditStudentModalProps> = ({
   const [name, setName] = useState(student?.name || '');
   const [classId, setClassId] = useState(student?.classId || defaultClassId || classes[0]?.id || '');
   const [admissionType, setAdmissionType] = useState<AdmissionType>(student?.admissionType || 'UNPACKAGED');
+  const [intervalDueDates, setIntervalDueDates] = useState<Record<PackageIntervalKey, string>>(() => {
+    const initial: Record<PackageIntervalKey, string> = {
+      interval_1: '',
+      interval_2: '',
+      interval_3: '',
+    };
+    if (student?.packageRecords) {
+      PACKAGE_INTERVALS.forEach((i) => {
+        if (student.packageRecords?.[i.key]?.dueDate) {
+          initial[i.key] = student.packageRecords[i.key]!.dueDate || '';
+        }
+      });
+    }
+    return initial;
+  });
   const [error, setError] = useState<string | null>(null);
 
   // Prevent background scrolling on mobile when modal is active
@@ -47,6 +62,7 @@ export const AddEditStudentModal: React.FC<AddEditStudentModalProps> = ({
         name,
         classId,
         admissionType,
+        intervalDueDates: admissionType === 'PACKAGED' ? intervalDueDates : undefined,
       });
       if (res.success) {
         onClose();
@@ -59,6 +75,7 @@ export const AddEditStudentModal: React.FC<AddEditStudentModalProps> = ({
         name,
         classId,
         admissionType,
+        intervalDueDates: admissionType === 'PACKAGED' ? intervalDueDates : undefined,
       });
       if (res.success) {
         onClose();
@@ -191,6 +208,45 @@ export const AddEditStudentModal: React.FC<AddEditStudentModalProps> = ({
               </button>
             </div>
           </div>
+
+          {/* Packaged Interval Due Dates Configuration */}
+          {admissionType === 'PACKAGED' && (
+            <div className="p-3.5 rounded-2xl bg-indigo-50/60 border border-indigo-100 space-y-3 animate-in fade-in duration-150">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5">
+                  <Clock className="w-4 h-4 text-indigo-600" />
+                  <span className="text-xs font-bold text-indigo-950">Interval Due Dates</span>
+                </div>
+                <span className="text-[10px] text-indigo-600 font-medium">Optional reminder</span>
+              </div>
+              <p className="text-[11px] text-slate-600 leading-tight">
+                Enter due dates for each interval. The student directory will automatically display dues in that specific month.
+              </p>
+
+              <div className="space-y-2.5 pt-1">
+                {PACKAGE_INTERVALS.map((intMeta) => (
+                  <div key={intMeta.key} className="flex items-center justify-between gap-2 bg-white/80 p-2 rounded-xl border border-indigo-100/80 shadow-2xs">
+                    <label htmlFor={`due-date-${intMeta.key}`} className="text-xs font-bold text-slate-700 flex-shrink-0">
+                      {intMeta.name}
+                    </label>
+                    <input
+                      id={`due-date-${intMeta.key}`}
+                      type="date"
+                      value={intervalDueDates[intMeta.key] || ''}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setIntervalDueDates((prev) => ({
+                          ...prev,
+                          [intMeta.key]: val,
+                        }));
+                      }}
+                      className="px-2 py-1 text-xs rounded-lg border border-slate-200 bg-white text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 shadow-2xs"
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {!isEdit && (
             <div className="p-3 bg-white/50 border border-white/70 rounded-2xl text-xs text-[#64748b]">

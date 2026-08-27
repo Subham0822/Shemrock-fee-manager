@@ -19,8 +19,8 @@ const AppContent: React.FC = () => {
   const [route, setRoute] = useState<RouteState>({ tab: 'dashboard' });
 
   // Modals state
-  const [paymentStudent, setPaymentStudent] = useState<Student | null>(null);
-  const [unpaidStudent, setUnpaidStudent] = useState<Student | null>(null);
+  const [paymentState, setPaymentState] = useState<{ student: Student; month?: string } | null>(null);
+  const [unpaidState, setUnpaidState] = useState<{ student: Student; month?: string } | null>(null);
   const [detailStudent, setDetailStudent] = useState<Student | null>(null);
   const [addEditState, setAddEditState] = useState<{
     isOpen: boolean;
@@ -79,8 +79,8 @@ const AppContent: React.FC = () => {
                 <ClassDetailsView
                   classId={route.classId}
                   onNavigate={handleNavigate}
-                  onOpenPayment={(s) => setPaymentStudent(s)}
-                  onOpenUnpaid={(s) => setUnpaidStudent(s)}
+                  onOpenPayment={(s) => setPaymentState({ student: s })}
+                  onOpenUnpaid={(s) => setUnpaidState({ student: s })}
                   onOpenStudentDetail={(s) => setDetailStudent(s)}
                   onOpenAddStudent={(cId) => handleOpenAddStudent(cId)}
                 />
@@ -92,8 +92,8 @@ const AppContent: React.FC = () => {
 
           {route.tab === 'students' && (
             <StudentsDirectoryView
-              onOpenPayment={(s) => setPaymentStudent(s)}
-              onOpenUnpaid={(s) => setUnpaidStudent(s)}
+              onOpenPayment={(s) => setPaymentState({ student: s })}
+              onOpenUnpaid={(s) => setUnpaidState({ student: s })}
               onOpenStudentDetail={(s) => setDetailStudent(s)}
               onOpenAddStudent={(cId) => handleOpenAddStudent(cId)}
             />
@@ -110,13 +110,13 @@ const AppContent: React.FC = () => {
       />
 
       {/* Payment Bottom Sheet / Modal */}
-      {paymentStudent && (
+      {paymentState && (
         <PaymentModal
-          student={paymentStudent}
-          onClose={() => setPaymentStudent(null)}
+          student={paymentState.student}
+          initialMonth={paymentState.month}
+          onClose={() => setPaymentState(null)}
           onSuccess={() => {
-            // update detailStudent if it was open
-            if (detailStudent && detailStudent.id === paymentStudent.id) {
+            if (detailStudent && detailStudent.id === paymentState.student.id) {
               setDetailStudent(null);
             }
           }}
@@ -124,12 +124,13 @@ const AppContent: React.FC = () => {
       )}
 
       {/* Unpaid Confirmation Modal */}
-      {unpaidStudent && (
+      {unpaidState && (
         <UnpaidConfirmModal
-          student={unpaidStudent}
-          onClose={() => setUnpaidStudent(null)}
+          student={unpaidState.student}
+          month={unpaidState.month}
+          onClose={() => setUnpaidState(null)}
           onSuccess={() => {
-            if (detailStudent && detailStudent.id === unpaidStudent.id) {
+            if (detailStudent && detailStudent.id === unpaidState.student.id) {
               setDetailStudent(null);
             }
           }}
@@ -141,13 +142,13 @@ const AppContent: React.FC = () => {
         <StudentDetailModal
           student={detailStudent}
           onClose={() => setDetailStudent(null)}
-          onOpenPayment={(s) => {
+          onOpenPayment={(s, month) => {
             setDetailStudent(null);
-            setPaymentStudent(s);
+            setPaymentState({ student: s, month });
           }}
-          onOpenUnpaid={(s) => {
+          onOpenUnpaid={(s, month) => {
             setDetailStudent(null);
-            setUnpaidStudent(s);
+            setUnpaidState({ student: s, month });
           }}
           onOpenEdit={(s) => {
             setDetailStudent(null);

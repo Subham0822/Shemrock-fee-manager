@@ -6,8 +6,8 @@ import { useFeeData } from '../../context/FeeDataContext';
 interface StudentDetailModalProps {
   student: Student | null;
   onClose: () => void;
-  onOpenPayment: (student: Student) => void;
-  onOpenUnpaid: (student: Student) => void;
+  onOpenPayment: (student: Student, month?: string) => void;
+  onOpenUnpaid: (student: Student, month?: string) => void;
   onOpenEdit: (student: Student) => void;
 }
 
@@ -134,7 +134,7 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
               <h3 className="text-xs font-bold uppercase tracking-wider text-[#0f172a] flex items-center gap-1.5">
                 <Calendar className="w-4 h-4 text-slate-500" /> Payment Register
               </h3>
-              <span className="text-[11px] text-[#64748b]">Tap to inspect</span>
+              <span className="text-[11px] text-[#64748b]">Tap any month to inspect or pay</span>
             </div>
 
             {/* Months Pills Grid */}
@@ -181,9 +181,9 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
             </div>
 
             {/* Selected Period Details Snippet */}
-            <div className="bg-white border border-white/90 rounded-xl p-3 text-xs space-y-1.5 shadow-xs">
+            <div className="bg-white border border-white/90 rounded-xl p-3.5 text-xs space-y-2 shadow-xs">
               <div className="flex items-center justify-between">
-                <span className="font-bold text-slate-800">
+                <span className="font-bold text-slate-800 text-sm">
                   {inspectedMonth} Record
                 </span>
                 <span
@@ -196,17 +196,32 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
                   {inspectedMonthRecord.feeStatus}
                 </span>
               </div>
+
               {isPaidInspectedMonth ? (
-                <div className="text-slate-600 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px]">
-                  <span>Mode: <strong className="text-slate-800">{inspectedMonthRecord.paymentMode?.replace('_', ' ')}</strong></span>
-                  <span>Date: <strong className="text-slate-800">{inspectedMonthRecord.paymentDate || 'Recorded'}</strong></span>
-                  {inspectedMonthRecord.paymentNote && (
-                    <span>Note: <strong className="font-mono text-slate-800">{inspectedMonthRecord.paymentNote}</strong></span>
-                  )}
+                <div className="space-y-2 pt-0.5">
+                  <div className="text-slate-600 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+                    <span>Mode: <strong className="text-slate-800">{inspectedMonthRecord.paymentMode?.replace('_', ' ')}</strong></span>
+                    <span>Submission Date: <strong className="text-slate-800">{inspectedMonthRecord.paymentDate || 'Recorded'}</strong></span>
+                    {inspectedMonthRecord.paymentNote && (
+                      <span>Note: <strong className="font-mono text-slate-800">{inspectedMonthRecord.paymentNote}</strong></span>
+                    )}
+                  </div>
+                  <div className="flex items-center justify-end pt-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onClose();
+                        onOpenUnpaid(student, inspectedMonth);
+                      }}
+                      className="px-2.5 py-1 text-xs font-semibold text-rose-700 hover:text-rose-800 bg-rose-50 hover:bg-rose-100 rounded-lg transition-colors active:scale-95 flex items-center gap-1"
+                    >
+                      <Undo2 className="w-3 h-3" /> Revert {inspectedMonth} to Unpaid
+                    </button>
+                  </div>
                 </div>
               ) : (
-                <div className="text-[#64748b] text-[11px]">
-                  Fee has not been collected for {inspectedMonth}.
+                <div className="text-[#64748b] text-[11px] pt-0.5">
+                  Fee has not been collected for <strong className="text-slate-700">{inspectedMonth}</strong>.
                 </div>
               )}
             </div>
@@ -264,32 +279,19 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
             </button>
           </div>
 
-          <div>
-            {!isPaidCurrentMonth ? (
-              <button
-                id="student-detail-mark-paid"
-                type="button"
-                onClick={() => {
-                  onClose();
-                  onOpenPayment(student);
-                }}
-                className="min-h-[46px] px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 active:scale-95 text-white text-sm font-bold flex items-center gap-2 shadow-md shadow-emerald-600/20 transition-all"
-              >
-                <Check className="w-4 h-4 stroke-[3]" /> Mark {activeMonth} Paid
-              </button>
-            ) : (
-              <button
-                id="student-detail-mark-unpaid"
-                type="button"
-                onClick={() => {
-                  onClose();
-                  onOpenUnpaid(student);
-                }}
-                className="min-h-[46px] px-4 py-2.5 rounded-xl bg-amber-50/90 border border-amber-300 hover:bg-amber-100 active:scale-95 text-amber-900 text-xs font-bold flex items-center gap-1.5 transition-colors shadow-xs"
-              >
-                <Undo2 className="w-4 h-4" /> Revert {activeMonth} to Unpaid
-              </button>
-            )}
+          <div className="flex items-center gap-2">
+            <button
+              id="student-detail-record-any-payment"
+              type="button"
+              onClick={() => {
+                onClose();
+                onOpenPayment(student, inspectedMonth);
+              }}
+              className="min-h-[46px] px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 active:scale-95 text-white text-sm font-bold flex items-center gap-2 shadow-md shadow-emerald-600/20 transition-all"
+            >
+              <Check className="w-4 h-4 stroke-[3]" />
+              {!isPaidInspectedMonth ? `Record ${inspectedMonth} Payment` : 'Record Advance / New Payment'}
+            </button>
           </div>
         </div>
       </div>

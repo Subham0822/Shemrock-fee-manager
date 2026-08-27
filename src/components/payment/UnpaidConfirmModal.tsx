@@ -5,12 +5,19 @@ import { useFeeData } from '../../context/FeeDataContext';
 
 interface UnpaidConfirmModalProps {
   student: Student | null;
+  month?: string;
   onClose: () => void;
   onSuccess?: () => void;
 }
 
-export const UnpaidConfirmModal: React.FC<UnpaidConfirmModalProps> = ({ student, onClose, onSuccess }) => {
+export const UnpaidConfirmModal: React.FC<UnpaidConfirmModalProps> = ({
+  student,
+  month,
+  onClose,
+  onSuccess,
+}) => {
   const { markStudentUnpaid, activeMonth, getStudentMonthRecord } = useFeeData();
+  const targetMonth = month || activeMonth;
 
   // Prevent background scrolling on mobile when modal is active
   useEffect(() => {
@@ -23,10 +30,10 @@ export const UnpaidConfirmModal: React.FC<UnpaidConfirmModalProps> = ({ student,
 
   if (!student) return null;
 
-  const monthRecord = getStudentMonthRecord(student, activeMonth);
+  const monthRecord = getStudentMonthRecord(student, targetMonth);
 
   const handleConfirm = () => {
-    markStudentUnpaid(student.id, activeMonth);
+    markStudentUnpaid(student.id, targetMonth);
     onClose();
     if (onSuccess) onSuccess();
   };
@@ -53,7 +60,7 @@ export const UnpaidConfirmModal: React.FC<UnpaidConfirmModalProps> = ({ student,
             <div className="w-8 h-8 rounded-xl bg-amber-100/90 border border-amber-200/60 flex items-center justify-center text-amber-700 shadow-xs">
               <AlertTriangle className="w-4 h-4" />
             </div>
-            <h2 className="text-base font-bold text-[#0f172a]">Mark {activeMonth} as Unpaid?</h2>
+            <h2 className="text-base font-bold text-[#0f172a]">Mark {targetMonth} as Unpaid?</h2>
           </div>
           <button
             id="close-unpaid-modal"
@@ -61,7 +68,7 @@ export const UnpaidConfirmModal: React.FC<UnpaidConfirmModalProps> = ({ student,
             className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-2xl text-slate-500 hover:text-slate-900 hover:bg-white/80 transition-all border border-transparent hover:border-white active:scale-95"
             aria-label="Close"
           >
-            <X className="w-4 h-4" />
+            <X className="w-5 h-5" />
           </button>
         </div>
 
@@ -72,13 +79,13 @@ export const UnpaidConfirmModal: React.FC<UnpaidConfirmModalProps> = ({ student,
               <span>Class: <strong className="font-semibold text-[#0f172a]">{student.className}</strong></span>
             </div>
             <div className="text-xs text-[#64748b] pt-2 border-t border-white/60 mt-2 flex justify-between">
-              <span>Month: <strong className="text-slate-900 font-bold">{activeMonth}</strong></span>
+              <span>Month: <strong className="text-slate-900 font-bold">{targetMonth}</strong></span>
               <span>{monthRecord.paymentMode ? monthRecord.paymentMode.replace('_', ' ') : ''} • {monthRecord.paymentDate || ''}</span>
             </div>
           </div>
 
           <p className="text-xs sm:text-sm text-[#64748b] leading-relaxed">
-            This will remove the payment record for <strong>{activeMonth}</strong> and mark <strong>{student.name}</strong> as <span className="font-bold text-rose-600">UNPAID</span> for {activeMonth}.
+            This will remove the payment record for <strong>{targetMonth}</strong> and mark <strong>{student.name}</strong> as <span className="font-bold text-rose-600">UNPAID</span> for {targetMonth}.
           </p>
         </div>
 

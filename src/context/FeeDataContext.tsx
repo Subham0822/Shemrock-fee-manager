@@ -33,8 +33,14 @@ interface FeeDataContextType {
   showToast: (title: string, message: string, type?: 'success' | 'info' | 'warning' | 'error') => void;
   removeToast: (id: string) => void;
   getStudentMonthRecord: (student: Student, month?: string) => MonthPaymentRecord;
-  markStudentPaid: (studentId: string, paymentMode: PaymentMode, note?: string, month?: string) => Promise<boolean>;
-  markStudentUnpaid: (studentId: string, month?: string) => Promise<boolean>;
+  markStudentPaid: (
+    studentId: string,
+    paymentMode: PaymentMode,
+    note?: string,
+    months?: string | string[],
+    paymentDate?: string
+  ) => Promise<boolean>;
+  markStudentUnpaid: (studentId: string, months?: string | string[]) => Promise<boolean>;
   addStudent: (data: { name: string; classId: string }) => Promise<{ success: boolean; error?: string; student?: Student }>;
   updateStudent: (studentId: string, data: { name: string; classId: string }) => Promise<{ success: boolean; error?: string }>;
   deleteStudent: (studentId: string) => Promise<boolean>;
@@ -263,39 +269,54 @@ export const FeeDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
     };
   }, [activeMonth]);
 
-  const markStudentPaid = useCallback(async (studentId: string, paymentMode: PaymentMode, note?: string, month?: string) => {
-    const targetMonth = month || activeMonth;
-    const now = new Date();
-    const dateStr = now.toISOString().split('T')[0];
+  const markStudentPaid = useCallback(async (
+    studentId: string,
+    paymentMode: PaymentMode,
+    note?: string,
+    months?: string | string[],
+    customPaymentDate?: string
+  ) => {
+    const targetMonths = Array.isArray(months)
+      ? months
+      : [months || activeMonth];
+
+    if (targetMonths.length === 0) return false;
+
+    const dateStr = customPaymentDate || new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD
     const targetStudent = students.find((s) => s.id === studentId);
     if (!targetStudent) return false;
 
     const currentRecords = targetStudent.monthlyRecords || {};
-    const newRecord: MonthPaymentRecord = {
-      feeStatus: 'PAID',
-      paymentMode,
-      paymentDate: dateStr,
-      paymentNote: note?.trim() || undefined,
-    };
-    const updatedRecords = {
-      ...currentRecords,
-      [targetMonth]: newRecord,
-    };
+    const updatedRecords: Record<string, MonthPaymentRecord> = { ...currentRecords };
 
-    const isCurrentActive = targetMonth === activeMonth;
+    targetMonths.forEach((m) => {
+      updatedRecords[m] = {
+        feeStatus: 'PAID',
+        paymentMode,
+        paymentDate: dateStr,
+        paymentNote: note?.trim() || undefined,
+      };
+    });
+
+    const isCurrentActiveIncluded = targetMonths.includes(activeMonth);
     const updatedStudent: Student = {
       ...targetStudent,
-      feeStatus: isCurrentActive ? 'PAID' : targetStudent.feeStatus,
-      paymentMode: isCurrentActive ? paymentMode : targetStudent.paymentMode,
-      paymentDate: isCurrentActive ? dateStr : targetStudent.paymentDate,
-      paymentNote: isCurrentActive ? (note?.trim() || undefined) : targetStudent.paymentNote,
+      feeStatus: isCurrentActiveIncluded ? 'PAID' : targetStudent.feeStatus,
+      paymentMode: isCurrentActiveIncluded ? paymentMode : targetStudent.paymentMode,
+      paymentDate: isCurrentActiveIncluded ? dateStr : targetStudent.paymentDate,
+      paymentNote: isCurrentActiveIncluded ? (note?.trim() || undefined) : targetStudent.paymentNote,
       monthlyRecords: updatedRecords,
-      updatedAt: now.toISOString(),
+      updatedAt: new Date().toISOString(),
     };
 
     // Optimistic UI update
     setStudents((prev) => prev.map((s) => (s.id === studentId ? updatedStudent : s)));
-    showToast('Payment Recorded', `${targetStudent.name} marked as PAID for ${targetMonth} via ${paymentMode.replace('_', ' ')}`, 'success');
+    const monthsLabel = targetMonths.join(', ');
+    showToast(
+      'Payment Recorded',
+      `${targetStudent.name} marked as PAID for ${monthsLabel} on ${dateStr} via ${paymentMode.replace('_', ' ')}`,
+      'success'
+    );
 
     // Firestore sync
     try {
@@ -307,37 +328,42 @@ export const FeeDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
     }
   }, [activeMonth, students, showToast]);
 
-  const markStudentUnpaid = useCallback(async (studentId: string, month?: string) => {
-    const targetMonth = month || activeMonth;
+  const markStudentUnpaid = useCallback(async (studentId: string, months?: string | string[]) => {
+    const targetMonths = Array.isArray(months)
+      ? months
+      : [months || activeMonth];
+
+    if (targetMonths.length === 0) return false;
+
     const now = new Date();
     const targetStudent = students.find((s) => s.id === studentId);
     if (!targetStudent) return false;
 
     const currentRecords = targetStudent.monthlyRecords || {};
-    const newRecord: MonthPaymentRecord = {
-      feeStatus: 'UNPAID',
-      paymentMode: null,
-      paymentDate: null,
-    };
-    const updatedRecords = {
-      ...currentRecords,
-      [targetMonth]: newRecord,
-    };
+    const updatedRecords: Record<string, MonthPaymentRecord> = { ...currentRecords };
 
-    const isCurrentActive = targetMonth === activeMonth;
+    targetMonths.forEach((m) => {
+      updatedRecords[m] = {
+        feeStatus: 'UNPAID',
+        paymentMode: null,
+        paymentDate: null,
+      };
+    });
+
+    const isCurrentActiveIncluded = targetMonths.includes(activeMonth);
     const updatedStudent: Student = {
       ...targetStudent,
-      feeStatus: isCurrentActive ? 'UNPAID' : targetStudent.feeStatus,
-      paymentMode: isCurrentActive ? null : targetStudent.paymentMode,
-      paymentDate: isCurrentActive ? null : targetStudent.paymentDate,
-      paymentNote: isCurrentActive ? undefined : targetStudent.paymentNote,
+      feeStatus: isCurrentActiveIncluded ? 'UNPAID' : targetStudent.feeStatus,
+      paymentMode: isCurrentActiveIncluded ? null : targetStudent.paymentMode,
+      paymentDate: isCurrentActiveIncluded ? null : targetStudent.paymentDate,
+      paymentNote: isCurrentActiveIncluded ? undefined : targetStudent.paymentNote,
       monthlyRecords: updatedRecords,
       updatedAt: now.toISOString(),
     };
 
     // Optimistic UI update
     setStudents((prev) => prev.map((s) => (s.id === studentId ? updatedStudent : s)));
-    showToast('Status Updated', `${targetStudent.name} fee status reverted to UNPAID for ${targetMonth}`, 'info');
+    showToast('Status Updated', `${targetStudent.name} fee status reverted to UNPAID for ${targetMonths.join(', ')}`, 'info');
 
     // Firestore sync
     try {

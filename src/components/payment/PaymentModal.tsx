@@ -66,8 +66,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
   const {
     students,
     markStudentPaid,
-    markExamFeePaid,
-    markPackageIntervalPaid,
+    markPackageIntervalsPaid,
     getStudentPackageRecord,
     activeMonth,
     monthsList,
@@ -93,6 +92,24 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
     return ['INTERVAL_1'];
   });
 
+  // Keep state synced when props change
+  useEffect(() => {
+    if (initialMonth) {
+      setSelectedMonths([initialMonth]);
+    } else {
+      setSelectedMonths([activeMonth]);
+    }
+  }, [initialMonth, activeMonth]);
+
+  useEffect(() => {
+    if (student?.admissionType === 'PACKAGED') {
+      const firstUnpaid = PACKAGE_INTERVALS.find(
+        (i) => (student.packageRecords?.[i.key]?.feeStatus || 'UNPAID') !== 'PAID'
+      );
+      setSelectedIntervals([firstUnpaid ? firstUnpaid.key : 'INTERVAL_1']);
+    }
+  }, [student?.id, student?.admissionType]);
+
   const julyRecord = student ? getStudentMonthRecord(student, 'July') : null;
   const isJulyExamUnpaid = julyRecord?.examFeeStatus !== 'PAID';
   const [includeJulyExamFee, setIncludeJulyExamFee] = useState<boolean>(true);
@@ -106,6 +123,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
   const [selectedMode, setSelectedMode] = useState<PaymentMode>('UPI');
   const [note, setNote] = useState('');
   const [step, setStep] = useState<'select' | 'confirm'>('select');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Prevent background scrolling on mobile when modal is active
   useEffect(() => {
@@ -215,18 +233,29 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
   }, [paymentDate]);
 
   const handleConfirm = async () => {
-    if (isPackaged) {
-      for (const intKey of selectedIntervals) {
-        await markPackageIntervalPaid(student.id, intKey, selectedMode, paymentDate, note);
+    if (isSubmitting) return;
+    setIsSubmitting(true);
+
+    try {
+      if (isPackaged) {
+        await markPackageIntervalsPaid(student.id, selectedIntervals, selectedMode, paymentDate, note);
+      } else {
+        await markStudentPaid(
+          student.id,
+          selectedMode,
+          note,
+          selectedMonths,
+          paymentDate,
+          selectedMonths.includes('July') && includeJulyExamFee && isJulyExamUnpaid
+        );
       }
-    } else {
-      markStudentPaid(student.id, selectedMode, note, selectedMonths, paymentDate);
-      if (selectedMonths.includes('July') && includeJulyExamFee && isJulyExamUnpaid) {
-        markExamFeePaid(student.id, 'July', selectedMode, paymentDate);
-      }
+      onClose();
+      if (onSuccess) onSuccess();
+    } catch (err) {
+      console.error('Error confirming payment:', err);
+    } finally {
+      setIsSubmitting(false);
     }
-    onClose();
-    if (onSuccess) onSuccess();
   };
 
   const selectedIntervalLabels = selectedIntervals.map((k) => {
@@ -754,9 +783,10 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
                 id="confirm-payment-btn"
                 type="button"
                 onClick={handleConfirm}
-                className="min-h-[46px] px-6 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 active:scale-95 text-white text-sm font-bold flex items-center gap-2 shadow-md shadow-emerald-600/20 transition-all"
+                disabled={isSubmitting}
+                className="min-h-[46px] px-6 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 active:scale-95 text-white text-sm font-bold flex items-center gap-2 shadow-md shadow-emerald-600/20 transition-all disabled:opacity-50 disabled:pointer-events-none"
               >
-                <Check className="w-4 h-4 stroke-[3]" /> Confirm Payment
+                <Check className="w-4 h-4 stroke-[3]" /> {isSubmitting ? 'Recording...' : 'Confirm Payment'}
               </button>
             </>
           )}

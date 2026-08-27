@@ -53,12 +53,20 @@ interface FeeDataContextType {
     paymentMode: PaymentMode,
     note?: string,
     months?: string | string[],
-    paymentDate?: string
+    paymentDate?: string,
+    includeJulyExamFee?: boolean
   ) => Promise<boolean>;
   markStudentUnpaid: (studentId: string, months?: string | string[]) => Promise<boolean>;
   markPackageIntervalPaid: (
     studentId: string,
     intervalKey: PackageIntervalKey,
+    paymentMode?: PaymentMode,
+    paymentDate?: string,
+    note?: string
+  ) => Promise<boolean>;
+  markPackageIntervalsPaid: (
+    studentId: string,
+    intervalKeys: PackageIntervalKey[],
     paymentMode?: PaymentMode,
     paymentDate?: string,
     note?: string
@@ -344,7 +352,7 @@ export const FeeDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
   }, [activeMonth]);
 
   const toggleExamFeeStatus = useCallback(async (studentId: string, month = 'July') => {
-    const targetStudent = students.find((s) => s.id === studentId);
+    const targetStudent = studentsRef.current.find((s) => s.id === studentId) || students.find((s) => s.id === studentId);
     if (!targetStudent) return false;
 
     const currentRecords = targetStudent.monthlyRecords || {};
@@ -377,6 +385,7 @@ export const FeeDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
       updatedAt: new Date().toISOString(),
     };
 
+    studentsRef.current = studentsRef.current.map((s) => (s.id === studentId ? updatedStudent : s));
     setStudents((prev) => prev.map((s) => (s.id === studentId ? updatedStudent : s)));
     showToast(
       'Exam Fee Updated',
@@ -399,7 +408,7 @@ export const FeeDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
     paymentMode: PaymentMode = 'CASH',
     paymentDate?: string
   ) => {
-    const targetStudent = students.find((s) => s.id === studentId);
+    const targetStudent = studentsRef.current.find((s) => s.id === studentId) || students.find((s) => s.id === studentId);
     if (!targetStudent) return false;
 
     const currentRecords = targetStudent.monthlyRecords || {};
@@ -429,6 +438,7 @@ export const FeeDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
       updatedAt: new Date().toISOString(),
     };
 
+    studentsRef.current = studentsRef.current.map((s) => (s.id === studentId ? updatedStudent : s));
     setStudents((prev) => prev.map((s) => (s.id === studentId ? updatedStudent : s)));
     showToast('Exam Fee Paid', `${targetStudent.name}'s ${month} Exam Fee marked as PAID on ${dateStr}`, 'success');
 
@@ -442,7 +452,7 @@ export const FeeDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
   }, [students, showToast]);
 
   const markExamFeeUnpaid = useCallback(async (studentId: string, month = 'July') => {
-    const targetStudent = students.find((s) => s.id === studentId);
+    const targetStudent = studentsRef.current.find((s) => s.id === studentId) || students.find((s) => s.id === studentId);
     if (!targetStudent) return false;
 
     const currentRecords = targetStudent.monthlyRecords || {};
@@ -471,6 +481,7 @@ export const FeeDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
       updatedAt: new Date().toISOString(),
     };
 
+    studentsRef.current = studentsRef.current.map((s) => (s.id === studentId ? updatedStudent : s));
     setStudents((prev) => prev.map((s) => (s.id === studentId ? updatedStudent : s)));
     showToast('Exam Fee Reverted', `${targetStudent.name}'s ${month} Exam Fee reverted to UNPAID`, 'info');
 
@@ -488,7 +499,8 @@ export const FeeDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
     paymentMode: PaymentMode,
     note?: string,
     months?: string | string[],
-    customPaymentDate?: string
+    customPaymentDate?: string,
+    includeJulyExamFee?: boolean
   ) => {
     const targetMonths = Array.isArray(months)
       ? months
@@ -497,18 +509,30 @@ export const FeeDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
     if (targetMonths.length === 0) return false;
 
     const dateStr = customPaymentDate || new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD
-    const targetStudent = students.find((s) => s.id === studentId);
+    const targetStudent = studentsRef.current.find((s) => s.id === studentId) || students.find((s) => s.id === studentId);
     if (!targetStudent) return false;
 
     const currentRecords = targetStudent.monthlyRecords || {};
     const updatedRecords: Record<string, MonthPaymentRecord> = { ...currentRecords };
 
     targetMonths.forEach((m) => {
+      const existing = currentRecords[m] || {
+        feeStatus: 'UNPAID',
+        paymentMode: null,
+        paymentDate: null,
+      };
+      const isJuly = m === 'July';
+      const markExamAsPaid = isJuly && (includeJulyExamFee || existing.examFeeStatus === 'PAID');
+
       updatedRecords[m] = {
+        ...existing,
         feeStatus: 'PAID',
         paymentMode,
         paymentDate: dateStr,
         paymentNote: note?.trim() || undefined,
+        examFeeStatus: markExamAsPaid ? 'PAID' : (existing.examFeeStatus || 'UNPAID'),
+        examFeePaymentDate: markExamAsPaid ? (existing.examFeePaymentDate || dateStr) : (existing.examFeePaymentDate || null),
+        examFeePaymentMode: markExamAsPaid ? (existing.examFeePaymentMode || paymentMode) : (existing.examFeePaymentMode || null),
       };
     });
 
@@ -519,11 +543,15 @@ export const FeeDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
       paymentMode: isCurrentActiveIncluded ? paymentMode : targetStudent.paymentMode,
       paymentDate: isCurrentActiveIncluded ? dateStr : targetStudent.paymentDate,
       paymentNote: isCurrentActiveIncluded ? (note?.trim() || undefined) : targetStudent.paymentNote,
+      examFeeStatus: (targetMonths.includes('July') && includeJulyExamFee) ? 'PAID' : targetStudent.examFeeStatus,
+      examFeePaymentDate: (targetMonths.includes('July') && includeJulyExamFee) ? dateStr : targetStudent.examFeePaymentDate,
+      examFeePaymentMode: (targetMonths.includes('July') && includeJulyExamFee) ? paymentMode : targetStudent.examFeePaymentMode,
       monthlyRecords: updatedRecords,
       updatedAt: new Date().toISOString(),
     };
 
     // Optimistic UI update
+    studentsRef.current = studentsRef.current.map((s) => (s.id === studentId ? updatedStudent : s));
     setStudents((prev) => prev.map((s) => (s.id === studentId ? updatedStudent : s)));
     const monthsLabel = targetMonths.join(', ');
     showToast(
@@ -550,14 +578,16 @@ export const FeeDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
     if (targetMonths.length === 0) return false;
 
     const now = new Date();
-    const targetStudent = students.find((s) => s.id === studentId);
+    const targetStudent = studentsRef.current.find((s) => s.id === studentId) || students.find((s) => s.id === studentId);
     if (!targetStudent) return false;
 
     const currentRecords = targetStudent.monthlyRecords || {};
     const updatedRecords: Record<string, MonthPaymentRecord> = { ...currentRecords };
 
     targetMonths.forEach((m) => {
+      const existing = currentRecords[m] || { feeStatus: 'UNPAID', paymentMode: null, paymentDate: null };
       updatedRecords[m] = {
+        ...existing,
         feeStatus: 'UNPAID',
         paymentMode: null,
         paymentDate: null,
@@ -576,6 +606,7 @@ export const FeeDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
     };
 
     // Optimistic UI update
+    studentsRef.current = studentsRef.current.map((s) => (s.id === studentId ? updatedStudent : s));
     setStudents((prev) => prev.map((s) => (s.id === studentId ? updatedStudent : s)));
     showToast('Status Updated', `${targetStudent.name} fee status reverted to UNPAID for ${targetMonths.join(', ')}`, 'info');
 
@@ -611,33 +642,31 @@ export const FeeDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
     };
   }, []);
 
-  const markPackageIntervalPaid = useCallback(async (
+  const markPackageIntervalsPaid = useCallback(async (
     studentId: string,
-    intervalKey: PackageIntervalKey,
+    intervalKeys: PackageIntervalKey[],
     paymentMode: PaymentMode = 'CASH',
     paymentDate?: string,
     note?: string
   ) => {
-    const targetStudent = students.find((s) => s.id === studentId);
+    const targetStudent = studentsRef.current.find((s) => s.id === studentId) || students.find((s) => s.id === studentId);
     if (!targetStudent) return false;
 
-    const intMeta = PACKAGE_INTERVALS.find((i) => i.key === intervalKey) || { key: intervalKey, name: intervalKey, shortName: intervalKey };
     const currentPackageRecords = targetStudent.packageRecords || {};
     const dateStr = paymentDate || new Date().toLocaleDateString('en-CA');
+    const updatedPackageRecords = { ...currentPackageRecords };
 
-    const updatedRecord: PackageIntervalRecord = {
-      intervalKey,
-      intervalName: intMeta.name,
-      feeStatus: 'PAID',
-      paymentMode,
-      paymentDate: dateStr,
-      paymentNote: note?.trim() || undefined,
-    };
-
-    const updatedPackageRecords = {
-      ...currentPackageRecords,
-      [intervalKey]: updatedRecord,
-    };
+    intervalKeys.forEach((intervalKey) => {
+      const intMeta = PACKAGE_INTERVALS.find((i) => i.key === intervalKey) || { key: intervalKey, name: intervalKey, shortName: intervalKey };
+      updatedPackageRecords[intervalKey] = {
+        intervalKey,
+        intervalName: intMeta.name,
+        feeStatus: 'PAID',
+        paymentMode,
+        paymentDate: dateStr,
+        paymentNote: note?.trim() || undefined,
+      };
+    });
 
     const updatedStudent: Student = {
       ...targetStudent,
@@ -646,10 +675,11 @@ export const FeeDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
       updatedAt: new Date().toISOString(),
     };
 
+    studentsRef.current = studentsRef.current.map((s) => (s.id === studentId ? updatedStudent : s));
     setStudents((prev) => prev.map((s) => (s.id === studentId ? updatedStudent : s)));
     showToast(
       'Interval Payment Recorded',
-      `${targetStudent.name}'s ${intMeta.name} marked as PAID via ${paymentMode.replace('_', ' ')} on ${dateStr}`,
+      `${targetStudent.name}'s interval payment marked as PAID via ${paymentMode.replace('_', ' ')} on ${dateStr}`,
       'success'
     );
 
@@ -662,11 +692,21 @@ export const FeeDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
     }
   }, [students, showToast]);
 
+  const markPackageIntervalPaid = useCallback(async (
+    studentId: string,
+    intervalKey: PackageIntervalKey,
+    paymentMode: PaymentMode = 'CASH',
+    paymentDate?: string,
+    note?: string
+  ) => {
+    return markPackageIntervalsPaid(studentId, [intervalKey], paymentMode, paymentDate, note);
+  }, [markPackageIntervalsPaid]);
+
   const markPackageIntervalUnpaid = useCallback(async (
     studentId: string,
     intervalKey: PackageIntervalKey
   ) => {
-    const targetStudent = students.find((s) => s.id === studentId);
+    const targetStudent = studentsRef.current.find((s) => s.id === studentId) || students.find((s) => s.id === studentId);
     if (!targetStudent) return false;
 
     const intMeta = PACKAGE_INTERVALS.find((i) => i.key === intervalKey) || { key: intervalKey, name: intervalKey, shortName: intervalKey };
@@ -692,6 +732,7 @@ export const FeeDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
       updatedAt: new Date().toISOString(),
     };
 
+    studentsRef.current = studentsRef.current.map((s) => (s.id === studentId ? updatedStudent : s));
     setStudents((prev) => prev.map((s) => (s.id === studentId ? updatedStudent : s)));
     showToast(
       'Status Reverted',
@@ -945,6 +986,7 @@ export const FeeDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
       markStudentPaid,
       markStudentUnpaid,
       markPackageIntervalPaid,
+      markPackageIntervalsPaid,
       markPackageIntervalUnpaid,
       addStudent,
       updateStudent,
@@ -975,6 +1017,7 @@ export const FeeDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
       markStudentPaid,
       markStudentUnpaid,
       markPackageIntervalPaid,
+      markPackageIntervalsPaid,
       markPackageIntervalUnpaid,
       addStudent,
       updateStudent,

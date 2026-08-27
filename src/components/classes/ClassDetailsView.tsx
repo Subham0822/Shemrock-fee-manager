@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { useFeeData } from '../../context/FeeDataContext';
-import { Student, RouteState } from '../../types';
+import { Student, RouteState, PACKAGE_INTERVALS } from '../../types';
 import {
   Search,
   CheckCircle2,
@@ -12,6 +12,7 @@ import {
   CreditCard,
   User,
   Users,
+  Layers,
 } from 'lucide-react';
 
 interface ClassDetailsViewProps {
@@ -33,7 +34,7 @@ export const ClassDetailsView: React.FC<ClassDetailsViewProps> = ({
   onOpenStudentDetail,
   onOpenAddStudent,
 }) => {
-  const { classes, students, getClassStats, activeMonth, getStudentMonthRecord, toggleExamFeeStatus } = useFeeData();
+  const { classes, students, getClassStats, activeMonth, getStudentMonthRecord, getStudentPackageRecord, toggleExamFeeStatus } = useFeeData();
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<FilterStatus>('ALL');
 
@@ -52,8 +53,16 @@ export const ClassDetailsView: React.FC<ClassDetailsViewProps> = ({
     const query = searchQuery.trim().toLowerCase();
 
     return classStudents.filter((student) => {
-      const monthRec = getStudentMonthRecord(student, activeMonth);
-      const isPaid = monthRec.feeStatus === 'PAID';
+      let isPaid = false;
+      if (student.admissionType === 'PACKAGED') {
+        const unpaidIntervals = PACKAGE_INTERVALS.filter(
+          (i) => getStudentPackageRecord(student, i.key).feeStatus !== 'PAID'
+        );
+        isPaid = unpaidIntervals.length === 0;
+      } else {
+        const monthRec = getStudentMonthRecord(student, activeMonth);
+        isPaid = monthRec.feeStatus === 'PAID';
+      }
 
       // Filter by status
       if (statusFilter === 'PAID' && !isPaid) return false;
@@ -69,7 +78,7 @@ export const ClassDetailsView: React.FC<ClassDetailsViewProps> = ({
     }).sort((a, b) => {
       return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
     });
-  }, [classStudents, searchQuery, statusFilter, activeMonth, getStudentMonthRecord]);
+  }, [classStudents, searchQuery, statusFilter, activeMonth, getStudentMonthRecord, getStudentPackageRecord]);
 
   if (!currentClass) {
     return (
@@ -269,8 +278,21 @@ export const ClassDetailsView: React.FC<ClassDetailsViewProps> = ({
           {/* Mobile & Tablet Card List (< 1024px) */}
           <div className="space-y-2.5 lg:hidden">
             {filteredStudents.map((student) => {
+              const isPackaged = student.admissionType === 'PACKAGED';
               const monthRecord = getStudentMonthRecord(student, activeMonth);
-              const isPaid = monthRecord.feeStatus === 'PAID';
+              let isPaid = false;
+              let packagedPaidCount = 0;
+
+              if (isPackaged) {
+                const unpaidIntervals = PACKAGE_INTERVALS.filter(
+                  (i) => getStudentPackageRecord(student, i.key).feeStatus !== 'PAID'
+                );
+                isPaid = unpaidIntervals.length === 0;
+                packagedPaidCount = PACKAGE_INTERVALS.length - unpaidIntervals.length;
+              } else {
+                isPaid = monthRecord.feeStatus === 'PAID';
+              }
+
               return (
                 <div
                   key={student.id}
@@ -285,13 +307,25 @@ export const ClassDetailsView: React.FC<ClassDetailsViewProps> = ({
                       className="flex-1 cursor-pointer"
                       onClick={() => onOpenStudentDetail(student)}
                     >
-                      <h4 className="text-sm font-bold text-[#0f172a] leading-tight hover:text-[#334155] transition-colors">
-                        {student.name}
-                      </h4>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <h4 className="text-sm font-bold text-[#0f172a] leading-tight hover:text-[#334155] transition-colors">
+                          {student.name}
+                        </h4>
+                        {isPackaged && (
+                          <span className="text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200 px-1.5 py-0.2 rounded-md">
+                            Packaged
+                          </span>
+                        )}
+                      </div>
 
                       {/* Payment Subtext */}
                       <div className="mt-1.5 flex flex-wrap items-center gap-2 text-xs text-[#64748b]">
-                        {isPaid ? (
+                        {isPackaged ? (
+                          <span className="inline-flex items-center gap-1 text-indigo-700 font-medium">
+                            <Layers className="w-3 h-3 text-indigo-600" />
+                            3-Interval Plan • {packagedPaidCount}/3 Paid
+                          </span>
+                        ) : isPaid ? (
                           <span className="inline-flex items-center gap-1 text-emerald-800 font-medium">
                             <CreditCard className="w-3 h-3 text-emerald-700" />
                             {monthRecord.paymentMode?.replace('_', ' ')} • {monthRecord.paymentDate}
@@ -306,7 +340,17 @@ export const ClassDetailsView: React.FC<ClassDetailsViewProps> = ({
 
                     {/* Status Badge */}
                     <div>
-                      {isPaid ? (
+                      {isPackaged ? (
+                        isPaid ? (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-200/60">
+                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-700" /> 3/3 PAID
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold bg-indigo-100 text-indigo-800 border border-indigo-200/60">
+                            <Layers className="w-3.5 h-3.5 text-indigo-700" /> {packagedPaidCount}/3 PAID
+                          </span>
+                        )
+                      ) : isPaid ? (
                         <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-200/60">
                           <CheckCircle2 className="w-3.5 h-3.5 text-emerald-700" /> PAID
                         </span>
@@ -318,8 +362,8 @@ export const ClassDetailsView: React.FC<ClassDetailsViewProps> = ({
                     </div>
                   </div>
 
-                  {/* July Special Exam Fee Row (Mobile - only for July) */}
-                  {activeMonth === 'July' && (
+                  {/* July Special Exam Fee Row (Mobile - only for July & Unpackaged) */}
+                  {!isPackaged && activeMonth === 'July' && (
                     <div className="mt-2.5 pt-2.5 border-t border-white/60 flex items-center justify-between gap-2 bg-purple-50/50 p-2.5 rounded-xl border border-purple-100/60">
                       <div className="flex items-center gap-1.5">
                         <span className="text-xs font-bold text-slate-700">Exam Fees:</span>
@@ -366,7 +410,15 @@ export const ClassDetailsView: React.FC<ClassDetailsViewProps> = ({
                     </button>
 
                     <div>
-                      {!isPaid ? (
+                      {isPackaged ? (
+                        <button
+                          id={`mark-paid-mobile-btn-${student.id}`}
+                          onClick={() => onOpenPayment(student)}
+                          className="min-h-[44px] px-4 py-2 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-md shadow-indigo-600/20 transition-all"
+                        >
+                          <Layers className="w-4 h-4" /> Manage Intervals
+                        </button>
+                      ) : !isPaid ? (
                         <button
                           id={`mark-paid-mobile-btn-${student.id}`}
                           onClick={() => onOpenPayment(student)}
@@ -396,7 +448,7 @@ export const ClassDetailsView: React.FC<ClassDetailsViewProps> = ({
               <thead className="bg-white/40 border-b border-white/60 text-xs font-semibold uppercase tracking-wider text-[#64748b]">
                 <tr>
                   <th className="px-6 py-4">Student Name</th>
-                  <th className="px-6 py-4">{activeMonth} Fee</th>
+                  <th className="px-6 py-4">Fee Status</th>
                   {activeMonth === 'July' && (
                     <th className="px-6 py-4">Exam Fees</th>
                   )}
@@ -406,8 +458,21 @@ export const ClassDetailsView: React.FC<ClassDetailsViewProps> = ({
               </thead>
               <tbody className="divide-y divide-white/40">
                 {filteredStudents.map((student) => {
+                  const isPackaged = student.admissionType === 'PACKAGED';
                   const monthRecord = getStudentMonthRecord(student, activeMonth);
-                  const isPaid = monthRecord.feeStatus === 'PAID';
+                  let isPaid = false;
+                  let packagedPaidCount = 0;
+
+                  if (isPackaged) {
+                    const unpaidIntervals = PACKAGE_INTERVALS.filter(
+                      (i) => getStudentPackageRecord(student, i.key).feeStatus !== 'PAID'
+                    );
+                    isPaid = unpaidIntervals.length === 0;
+                    packagedPaidCount = PACKAGE_INTERVALS.length - unpaidIntervals.length;
+                  } else {
+                    isPaid = monthRecord.feeStatus === 'PAID';
+                  }
+
                   return (
                     <tr
                       key={student.id}
@@ -415,15 +480,32 @@ export const ClassDetailsView: React.FC<ClassDetailsViewProps> = ({
                       className="hover:bg-white/40 transition-colors"
                     >
                       <td className="px-6 py-4">
-                        <button
-                          onClick={() => onOpenStudentDetail(student)}
-                          className="font-bold text-[#0f172a] hover:text-[#334155] text-left cursor-pointer"
-                        >
-                          {student.name}
-                        </button>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => onOpenStudentDetail(student)}
+                            className="font-bold text-[#0f172a] hover:text-[#334155] text-left cursor-pointer"
+                          >
+                            {student.name}
+                          </button>
+                          {isPackaged && (
+                            <span className="text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200 px-1.5 py-0.2 rounded-md">
+                              Packaged
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td className="px-6 py-4">
-                        {isPaid ? (
+                        {isPackaged ? (
+                          isPaid ? (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-200/60">
+                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-700" /> 3/3 PAID
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg text-xs font-bold bg-indigo-100 text-indigo-800 border border-indigo-200/60">
+                              <Layers className="w-3.5 h-3.5 text-indigo-700" /> {packagedPaidCount}/3 PAID
+                            </span>
+                          )
+                        ) : isPaid ? (
                           <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-200/60">
                             <CheckCircle2 className="w-3.5 h-3.5 text-emerald-700" /> PAID
                           </span>
@@ -435,7 +517,9 @@ export const ClassDetailsView: React.FC<ClassDetailsViewProps> = ({
                       </td>
                       {activeMonth === 'July' && (
                         <td className="px-6 py-4">
-                          {monthRecord.examFeeStatus === 'PAID' ? (
+                          {isPackaged ? (
+                            <span className="text-xs text-slate-400 font-medium">N/A (Packaged)</span>
+                          ) : monthRecord.examFeeStatus === 'PAID' ? (
                             <button
                               type="button"
                               onClick={() => toggleExamFeeStatus(student.id, 'July')}
@@ -459,7 +543,11 @@ export const ClassDetailsView: React.FC<ClassDetailsViewProps> = ({
                         </td>
                       )}
                       <td className="px-6 py-4 text-xs text-[#64748b]">
-                        {isPaid ? (
+                        {isPackaged ? (
+                          <span className="font-semibold text-indigo-700">
+                            Packaged (3 Intervals) • {packagedPaidCount}/3 Paid
+                          </span>
+                        ) : isPaid ? (
                           <div>
                             <span className="font-semibold text-slate-800">
                               {monthRecord.paymentMode?.replace('_', ' ')}
@@ -479,7 +567,15 @@ export const ClassDetailsView: React.FC<ClassDetailsViewProps> = ({
                           >
                             Details
                           </button>
-                          {!isPaid ? (
+                          {isPackaged ? (
+                            <button
+                              id={`mark-paid-desktop-btn-${student.id}`}
+                              onClick={() => onOpenPayment(student)}
+                              className="min-h-[38px] px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-md shadow-indigo-600/20"
+                            >
+                              <Layers className="w-3.5 h-3.5" /> Intervals
+                            </button>
+                          ) : !isPaid ? (
                             <button
                               id={`mark-paid-desktop-btn-${student.id}`}
                               onClick={() => onOpenPayment(student)}

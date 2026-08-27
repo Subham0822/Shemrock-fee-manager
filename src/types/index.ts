@@ -2,6 +2,25 @@ export type FeeStatus = 'PAID' | 'UNPAID';
 
 export type PaymentMode = 'CASH' | 'UPI' | 'BANK_TRANSFER' | 'CHEQUE' | 'OTHER';
 
+export type AdmissionType = 'UNPACKAGED' | 'PACKAGED';
+
+export type PackageIntervalKey = 'interval_1' | 'interval_2' | 'interval_3';
+
+export interface PackageIntervalRecord {
+  intervalKey: PackageIntervalKey;
+  intervalName: string; // 'First Interval' | 'Second Interval' | 'Third Interval'
+  feeStatus: FeeStatus;
+  paymentMode: PaymentMode | null;
+  paymentDate: string | null;
+  paymentNote?: string;
+}
+
+export const PACKAGE_INTERVALS: { key: PackageIntervalKey; name: string; shortName: string }[] = [
+  { key: 'interval_1', name: 'First Interval', shortName: '1st Interval' },
+  { key: 'interval_2', name: 'Second Interval', shortName: '2nd Interval' },
+  { key: 'interval_3', name: 'Third Interval', shortName: '3rd Interval' },
+];
+
 export interface MonthPaymentRecord {
   feeStatus: FeeStatus;
   paymentMode: PaymentMode | null;
@@ -17,17 +36,20 @@ export interface Student {
   name: string;
   classId: string;
   className: string;
-  // Current active month / period status
+  admissionType?: AdmissionType; // defaults to 'UNPACKAGED'
+  // Current active month / period status (for UNPACKAGED students)
   feeStatus: FeeStatus;
   paymentMode: PaymentMode | null;
   paymentDate: string | null;
   paymentNote?: string;
-  // Exam fee status (specifically for July)
+  // Exam fee status (specifically for July for UNPACKAGED students)
   examFeeStatus?: FeeStatus;
   examFeePaymentMode?: PaymentMode | null;
   examFeePaymentDate?: string | null;
-  // Period-wise record dictionary (e.g. { "April": {...}, "Sept/Oct": {...}, "Jan/Feb/March": {...} })
+  // Period-wise record dictionary (for UNPACKAGED students)
   monthlyRecords?: Record<string, MonthPaymentRecord>;
+  // Packaged Intervals records (for PACKAGED students - 3 intervals)
+  packageRecords?: Partial<Record<PackageIntervalKey, PackageIntervalRecord>>;
   createdAt: string;
   updatedAt: string;
 }

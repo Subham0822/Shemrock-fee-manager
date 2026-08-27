@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { useFeeData } from '../../context/FeeDataContext';
-import { Student } from '../../types';
+import { Student, PACKAGE_INTERVALS } from '../../types';
 import {
   Search,
   CheckCircle2,
@@ -11,6 +11,7 @@ import {
   Users,
   Clock,
   Sparkles,
+  Layers,
 } from 'lucide-react';
 
 interface StudentsDirectoryViewProps {
@@ -25,29 +26,44 @@ export const StudentsDirectoryView: React.FC<StudentsDirectoryViewProps> = ({
   onOpenStudentDetail,
   onOpenAddStudent,
 }) => {
-  const { classes, students, activeMonth, monthsList, getStudentMonthRecord } = useFeeData();
+  const { classes, students, activeMonth, monthsList, getStudentMonthRecord, getStudentPackageRecord } = useFeeData();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedClassId, setSelectedClassId] = useState<string>('ALL');
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'PENDING' | 'CLEARED'>('ALL');
 
-  // Compute pending status for any student based on academic months up to current activeMonth
+  // Compute pending status for any student based on academic months or package intervals
   const getStudentDueInfo = useMemo(() => {
     const activeIdx = monthsList.indexOf(activeMonth);
     const dueMonthsRange = activeIdx >= 0 ? monthsList.slice(0, activeIdx + 1) : monthsList;
 
     return (student: Student) => {
+      if (student.admissionType === 'PACKAGED') {
+        const unpaidIntervals = PACKAGE_INTERVALS.filter(
+          (i) => getStudentPackageRecord(student, i.key).feeStatus !== 'PAID'
+        );
+        const isPending = unpaidIntervals.length > 0;
+        return {
+          isPackaged: true,
+          pendingMonths: unpaidIntervals.map((i) => i.shortName),
+          pendingCount: unpaidIntervals.length,
+          isPending,
+          isCleared: !isPending,
+        };
+      }
+
       const pendingMonths = dueMonthsRange.filter(
         (m) => getStudentMonthRecord(student, m).feeStatus !== 'PAID'
       );
       const isPending = pendingMonths.length > 0;
       return {
+        isPackaged: false,
         pendingMonths,
         pendingCount: pendingMonths.length,
         isPending,
         isCleared: !isPending,
       };
     };
-  }, [monthsList, activeMonth, getStudentMonthRecord]);
+  }, [monthsList, activeMonth, getStudentMonthRecord, getStudentPackageRecord]);
 
   // Overall counts
   const summary = useMemo(() => {
@@ -299,9 +315,16 @@ export const StudentsDirectoryView: React.FC<StudentsDirectoryViewProps> = ({
                       className="flex-1 cursor-pointer"
                       onClick={() => onOpenStudentDetail(student)}
                     >
-                      <h4 className="text-sm font-bold text-[#0f172a] leading-snug">
-                        {student.name}
-                      </h4>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <h4 className="text-sm font-bold text-[#0f172a] leading-snug">
+                          {student.name}
+                        </h4>
+                        {student.admissionType === 'PACKAGED' && (
+                          <span className="text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200 px-1.5 py-0.2 rounded-md">
+                            Packaged
+                          </span>
+                        )}
+                      </div>
                       <div className="mt-1 flex items-center gap-1.5">
                         <span className="text-[11px] font-semibold bg-white px-2 py-0.5 rounded-md border border-slate-200/70 text-slate-700 shadow-2xs">
                           {student.className}
@@ -314,12 +337,14 @@ export const StudentsDirectoryView: React.FC<StudentsDirectoryViewProps> = ({
                       {isPending ? (
                         <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold bg-rose-100/90 text-rose-800 border border-rose-200">
                           <AlertCircle className="w-3.5 h-3.5 text-rose-600" />
-                          {dueInfo.pendingCount} {dueInfo.pendingCount === 1 ? 'Month' : 'Months'} Pending
+                          {dueInfo.isPackaged
+                            ? `${dueInfo.pendingCount} Interval${dueInfo.pendingCount === 1 ? '' : 's'} Due`
+                            : `${dueInfo.pendingCount} ${dueInfo.pendingCount === 1 ? 'Month' : 'Months'} Pending`}
                         </span>
                       ) : (
                         <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold bg-emerald-100/90 text-emerald-800 border border-emerald-200">
                           <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                          Fees Cleared
+                          {dueInfo.isPackaged ? 'Package Cleared' : 'Fees Cleared'}
                         </span>
                       )}
                     </div>
@@ -329,14 +354,20 @@ export const StudentsDirectoryView: React.FC<StudentsDirectoryViewProps> = ({
                   <div className="mt-2 text-xs">
                     {isPending ? (
                       <div className="flex items-center gap-1.5 text-rose-900 bg-rose-50/80 border border-rose-100/80 px-2.5 py-1.5 rounded-xl">
-                        <Clock className="w-3.5 h-3.5 text-rose-600 flex-shrink-0" />
+                        {dueInfo.isPackaged ? (
+                          <Layers className="w-3.5 h-3.5 text-indigo-600 flex-shrink-0" />
+                        ) : (
+                          <Clock className="w-3.5 h-3.5 text-rose-600 flex-shrink-0" />
+                        )}
                         <span className="text-[11px] leading-tight font-medium truncate">
                           Due: <strong className="font-semibold">{dueInfo.pendingMonths.join(', ')}</strong>
                         </span>
                       </div>
                     ) : (
                       <div className="text-[11px] text-emerald-800 font-medium px-0.5">
-                        ✓ All fees paid up to date ({activeMonth})
+                        {dueInfo.isPackaged
+                          ? '✓ All 3 intervals paid in full'
+                          : `✓ All fees paid up to date (${activeMonth})`}
                       </div>
                     )}
                   </div>
@@ -384,7 +415,7 @@ export const StudentsDirectoryView: React.FC<StudentsDirectoryViewProps> = ({
                   <th className="px-6 py-3.5">Student Name</th>
                   <th className="px-6 py-3.5">Class</th>
                   <th className="px-6 py-3.5">Status & Dues</th>
-                  <th className="px-6 py-3.5">Pending Months</th>
+                  <th className="px-6 py-3.5">Pending Schedule</th>
                   <th className="px-6 py-3.5 text-right">Action</th>
                 </tr>
               </thead>
@@ -399,12 +430,19 @@ export const StudentsDirectoryView: React.FC<StudentsDirectoryViewProps> = ({
                       className="hover:bg-white/40 transition-colors"
                     >
                       <td className="px-6 py-3.5">
-                        <button
-                          onClick={() => onOpenStudentDetail(student)}
-                          className="font-bold text-[#0f172a] hover:text-slate-700 text-left"
-                        >
-                          {student.name}
-                        </button>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => onOpenStudentDetail(student)}
+                            className="font-bold text-[#0f172a] hover:text-slate-700 text-left"
+                          >
+                            {student.name}
+                          </button>
+                          {student.admissionType === 'PACKAGED' && (
+                            <span className="text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200 px-1.5 py-0.2 rounded-md">
+                              Packaged
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td className="px-6 py-3.5 text-xs text-slate-700 font-medium">
                         <span className="bg-white px-2.5 py-1 rounded-md border border-slate-200/80 text-slate-800 shadow-2xs font-semibold">
@@ -415,12 +453,14 @@ export const StudentsDirectoryView: React.FC<StudentsDirectoryViewProps> = ({
                         {isPending ? (
                           <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg text-xs font-bold bg-rose-100 text-rose-800 border border-rose-200">
                             <AlertCircle className="w-3.5 h-3.5 text-rose-600" />
-                            {dueInfo.pendingCount} {dueInfo.pendingCount === 1 ? 'Month' : 'Months'} Pending
+                            {dueInfo.isPackaged
+                              ? `${dueInfo.pendingCount} Interval${dueInfo.pendingCount === 1 ? '' : 's'} Due`
+                              : `${dueInfo.pendingCount} ${dueInfo.pendingCount === 1 ? 'Month' : 'Months'} Pending`}
                           </span>
                         ) : (
                           <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
                             <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                            Fees Cleared
+                            {dueInfo.isPackaged ? 'Package Cleared' : 'Fees Cleared'}
                           </span>
                         )}
                       </td>
@@ -431,7 +471,7 @@ export const StudentsDirectoryView: React.FC<StudentsDirectoryViewProps> = ({
                           </span>
                         ) : (
                           <span className="text-emerald-700 font-medium">
-                            Paid up to date ({activeMonth})
+                            {dueInfo.isPackaged ? 'All 3 intervals paid in full' : `Paid up to date (${activeMonth})`}
                           </span>
                         )}
                       </td>

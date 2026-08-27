@@ -1,5 +1,16 @@
 import React, { createContext, useContext, useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { Student, SchoolClass, SchoolSettings, PaymentMode, MonthPaymentRecord, FeeStatus } from '../types';
+import {
+  Student,
+  SchoolClass,
+  SchoolSettings,
+  PaymentMode,
+  MonthPaymentRecord,
+  FeeStatus,
+  AdmissionType,
+  PackageIntervalKey,
+  PackageIntervalRecord,
+  PACKAGE_INTERVALS,
+} from '../types';
 import { DEFAULT_SETTINGS, INITIAL_CLASSES, ACADEMIC_MONTHS } from '../data/seedData';
 import { db, handleFirestoreError, OperationType, testConnection, isFirebaseConfigured } from '../firebase';
 import { collection, doc, onSnapshot, setDoc, deleteDoc, writeBatch, getDocs, limit, query } from 'firebase/firestore';
@@ -33,6 +44,7 @@ interface FeeDataContextType {
   showToast: (title: string, message: string, type?: 'success' | 'info' | 'warning' | 'error') => void;
   removeToast: (id: string) => void;
   getStudentMonthRecord: (student: Student, month?: string) => MonthPaymentRecord;
+  getStudentPackageRecord: (student: Student, intervalKey: PackageIntervalKey) => PackageIntervalRecord;
   toggleExamFeeStatus: (studentId: string, month?: string) => Promise<boolean>;
   markExamFeePaid: (studentId: string, month?: string, paymentMode?: PaymentMode, paymentDate?: string) => Promise<boolean>;
   markExamFeeUnpaid: (studentId: string, month?: string) => Promise<boolean>;
@@ -44,8 +56,16 @@ interface FeeDataContextType {
     paymentDate?: string
   ) => Promise<boolean>;
   markStudentUnpaid: (studentId: string, months?: string | string[]) => Promise<boolean>;
-  addStudent: (data: { name: string; classId: string }) => Promise<{ success: boolean; error?: string; student?: Student }>;
-  updateStudent: (studentId: string, data: { name: string; classId: string }) => Promise<{ success: boolean; error?: string }>;
+  markPackageIntervalPaid: (
+    studentId: string,
+    intervalKey: PackageIntervalKey,
+    paymentMode?: PaymentMode,
+    paymentDate?: string,
+    note?: string
+  ) => Promise<boolean>;
+  markPackageIntervalUnpaid: (studentId: string, intervalKey: PackageIntervalKey) => Promise<boolean>;
+  addStudent: (data: { name: string; classId: string; admissionType?: AdmissionType }) => Promise<{ success: boolean; error?: string; student?: Student }>;
+  updateStudent: (studentId: string, data: { name: string; classId: string; admissionType?: AdmissionType }) => Promise<{ success: boolean; error?: string }>;
   deleteStudent: (studentId: string) => Promise<boolean>;
   deleteAllStudents: () => Promise<void>;
   updateSettings: (newSettings: Partial<SchoolSettings>) => Promise<void>;
@@ -119,6 +139,7 @@ export const FeeDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
               name: s.name || 'Unnamed',
               classId: s.classId || 'class_1',
               className: s.className || 'Class 1',
+              admissionType: (s.admissionType as AdmissionType) || 'UNPACKAGED',
               feeStatus: s.feeStatus || 'UNPAID',
               paymentMode: s.paymentMode || null,
               paymentDate: s.paymentDate || null,
@@ -127,6 +148,7 @@ export const FeeDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
               examFeePaymentMode: s.examFeePaymentMode || null,
               examFeePaymentDate: s.examFeePaymentDate || null,
               monthlyRecords: s.monthlyRecords || {},
+              packageRecords: s.packageRecords || {},
               createdAt: s.createdAt || new Date().toISOString(),
               updatedAt: s.updatedAt || new Date().toISOString(),
             }));
@@ -567,7 +589,130 @@ export const FeeDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
     }
   }, [activeMonth, students, showToast]);
 
-  const addStudent = useCallback(async (data: { name: string; classId: string }) => {
+  const getStudentPackageRecord = useCallback((student: Student, intervalKey: PackageIntervalKey): PackageIntervalRecord => {
+    const intMeta = PACKAGE_INTERVALS.find((i) => i.key === intervalKey) || { key: intervalKey, name: intervalKey, shortName: intervalKey };
+    if (student.packageRecords && student.packageRecords[intervalKey]) {
+      const rec = student.packageRecords[intervalKey]!;
+      return {
+        intervalKey,
+        intervalName: rec.intervalName || intMeta.name,
+        feeStatus: rec.feeStatus || 'UNPAID',
+        paymentMode: rec.paymentMode || null,
+        paymentDate: rec.paymentDate || null,
+        paymentNote: rec.paymentNote,
+      };
+    }
+    return {
+      intervalKey,
+      intervalName: intMeta.name,
+      feeStatus: 'UNPAID',
+      paymentMode: null,
+      paymentDate: null,
+    };
+  }, []);
+
+  const markPackageIntervalPaid = useCallback(async (
+    studentId: string,
+    intervalKey: PackageIntervalKey,
+    paymentMode: PaymentMode = 'CASH',
+    paymentDate?: string,
+    note?: string
+  ) => {
+    const targetStudent = students.find((s) => s.id === studentId);
+    if (!targetStudent) return false;
+
+    const intMeta = PACKAGE_INTERVALS.find((i) => i.key === intervalKey) || { key: intervalKey, name: intervalKey, shortName: intervalKey };
+    const currentPackageRecords = targetStudent.packageRecords || {};
+    const dateStr = paymentDate || new Date().toLocaleDateString('en-CA');
+
+    const updatedRecord: PackageIntervalRecord = {
+      intervalKey,
+      intervalName: intMeta.name,
+      feeStatus: 'PAID',
+      paymentMode,
+      paymentDate: dateStr,
+      paymentNote: note?.trim() || undefined,
+    };
+
+    const updatedPackageRecords = {
+      ...currentPackageRecords,
+      [intervalKey]: updatedRecord,
+    };
+
+    const updatedStudent: Student = {
+      ...targetStudent,
+      admissionType: 'PACKAGED',
+      packageRecords: updatedPackageRecords,
+      updatedAt: new Date().toISOString(),
+    };
+
+    setStudents((prev) => prev.map((s) => (s.id === studentId ? updatedStudent : s)));
+    showToast(
+      'Interval Payment Recorded',
+      `${targetStudent.name}'s ${intMeta.name} marked as PAID via ${paymentMode.replace('_', ' ')} on ${dateStr}`,
+      'success'
+    );
+
+    try {
+      await setDoc(doc(db, 'students', studentId), sanitizeFirestoreData(updatedStudent));
+      return true;
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `students/${studentId}`);
+      return true;
+    }
+  }, [students, showToast]);
+
+  const markPackageIntervalUnpaid = useCallback(async (
+    studentId: string,
+    intervalKey: PackageIntervalKey
+  ) => {
+    const targetStudent = students.find((s) => s.id === studentId);
+    if (!targetStudent) return false;
+
+    const intMeta = PACKAGE_INTERVALS.find((i) => i.key === intervalKey) || { key: intervalKey, name: intervalKey, shortName: intervalKey };
+    const currentPackageRecords = targetStudent.packageRecords || {};
+
+    const updatedRecord: PackageIntervalRecord = {
+      intervalKey,
+      intervalName: intMeta.name,
+      feeStatus: 'UNPAID',
+      paymentMode: null,
+      paymentDate: null,
+      paymentNote: undefined,
+    };
+
+    const updatedPackageRecords = {
+      ...currentPackageRecords,
+      [intervalKey]: updatedRecord,
+    };
+
+    const updatedStudent: Student = {
+      ...targetStudent,
+      packageRecords: updatedPackageRecords,
+      updatedAt: new Date().toISOString(),
+    };
+
+    setStudents((prev) => prev.map((s) => (s.id === studentId ? updatedStudent : s)));
+    showToast(
+      'Status Reverted',
+      `${targetStudent.name}'s ${intMeta.name} status reverted to UNPAID`,
+      'info'
+    );
+
+    try {
+      await setDoc(doc(db, 'students', studentId), sanitizeFirestoreData(updatedStudent));
+      return true;
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `students/${studentId}`);
+      return true;
+    }
+  }, [students, showToast]);
+
+  const addStudent = useCallback(async (data: {
+    name: string;
+    classId: string;
+    admissionType?: AdmissionType;
+  }) => {
     const trimmedName = data.name.trim();
 
     if (!trimmedName) return { success: false, error: 'Student name is required' };
@@ -583,9 +728,22 @@ export const FeeDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
     }
 
     const now = new Date().toISOString();
+    const admissionType: AdmissionType = data.admissionType || 'UNPACKAGED';
+
     const initialRecords: Record<string, MonthPaymentRecord> = {};
     ACADEMIC_MONTHS.forEach((m) => {
       initialRecords[m] = {
+        feeStatus: 'UNPAID',
+        paymentMode: null,
+        paymentDate: null,
+      };
+    });
+
+    const initialPackageRecords: Partial<Record<PackageIntervalKey, PackageIntervalRecord>> = {};
+    PACKAGE_INTERVALS.forEach((i) => {
+      initialPackageRecords[i.key] = {
+        intervalKey: i.key,
+        intervalName: i.name,
         feeStatus: 'UNPAID',
         paymentMode: null,
         paymentDate: null,
@@ -598,16 +756,18 @@ export const FeeDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
       name: trimmedName,
       classId: cls.id,
       className: cls.name,
+      admissionType,
       feeStatus: 'UNPAID',
       paymentMode: null,
       paymentDate: null,
       monthlyRecords: initialRecords,
+      packageRecords: initialPackageRecords,
       createdAt: now,
       updatedAt: now,
     };
 
     setStudents((prev) => [newStudent, ...prev]);
-    showToast('Student Added', `${trimmedName} added to ${cls.name}`, 'success');
+    showToast('Student Added', `${trimmedName} added to ${cls.name} (${admissionType === 'PACKAGED' ? 'Packaged' : 'Unpackaged'})`, 'success');
 
     try {
       await setDoc(doc(db, 'students', newStudentId), sanitizeFirestoreData(newStudent));
@@ -618,7 +778,11 @@ export const FeeDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
     return { success: true, student: newStudent };
   }, [classes, students, showToast]);
 
-  const updateStudent = useCallback(async (studentId: string, data: { name: string; classId: string }) => {
+  const updateStudent = useCallback(async (studentId: string, data: {
+    name: string;
+    classId: string;
+    admissionType?: AdmissionType;
+  }) => {
     const trimmedName = data.name.trim();
 
     if (!trimmedName) return { success: false, error: 'Student name is required' };
@@ -630,11 +794,29 @@ export const FeeDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
     if (!currentStudent) return { success: false, error: 'Student not found' };
 
     const now = new Date().toISOString();
+    const admissionType: AdmissionType = data.admissionType || currentStudent.admissionType || 'UNPACKAGED';
+
+    let packageRecords = currentStudent.packageRecords;
+    if (admissionType === 'PACKAGED' && (!packageRecords || Object.keys(packageRecords).length === 0)) {
+      packageRecords = {};
+      PACKAGE_INTERVALS.forEach((i) => {
+        packageRecords![i.key] = {
+          intervalKey: i.key,
+          intervalName: i.name,
+          feeStatus: 'UNPAID',
+          paymentMode: null,
+          paymentDate: null,
+        };
+      });
+    }
+
     const updatedStudent: Student = {
       ...currentStudent,
       name: trimmedName,
       classId: cls.id,
       className: cls.name,
+      admissionType,
+      packageRecords,
       updatedAt: now,
     };
 
@@ -715,8 +897,10 @@ export const FeeDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   const getOverallStats = useCallback((month?: string): FeeStats => {
     const targetMonth = month || activeMonth;
-    const total = students.length;
-    const paid = students.filter((s) => {
+    // Calculate monthly stats for Unpackaged students (who follow monthly schedule)
+    const unpackagedStudents = students.filter((s) => (s.admissionType || 'UNPACKAGED') === 'UNPACKAGED');
+    const total = unpackagedStudents.length;
+    const paid = unpackagedStudents.filter((s) => {
       const rec = s.monthlyRecords?.[targetMonth];
       return rec ? rec.feeStatus === 'PAID' : (targetMonth === activeMonth && s.feeStatus === 'PAID');
     }).length;
@@ -727,7 +911,7 @@ export const FeeDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   const getClassStats = useCallback((classId: string, month?: string): FeeStats => {
     const targetMonth = month || activeMonth;
-    const classStudents = students.filter((s) => s.classId === classId);
+    const classStudents = students.filter((s) => s.classId === classId && (s.admissionType || 'UNPACKAGED') === 'UNPACKAGED');
     const total = classStudents.length;
     const paid = classStudents.filter((s) => {
       const rec = s.monthlyRecords?.[targetMonth];
@@ -754,11 +938,14 @@ export const FeeDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
       showToast,
       removeToast,
       getStudentMonthRecord,
+      getStudentPackageRecord,
       toggleExamFeeStatus,
       markExamFeePaid,
       markExamFeeUnpaid,
       markStudentPaid,
       markStudentUnpaid,
+      markPackageIntervalPaid,
+      markPackageIntervalUnpaid,
       addStudent,
       updateStudent,
       deleteStudent,
@@ -776,16 +963,19 @@ export const FeeDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
       isSyncing,
       cloudError,
       retryConnection,
-      setActiveMonth,
+      setActiveMonthState,
       toasts,
       showToast,
       removeToast,
       getStudentMonthRecord,
+      getStudentPackageRecord,
       toggleExamFeeStatus,
       markExamFeePaid,
       markExamFeeUnpaid,
       markStudentPaid,
       markStudentUnpaid,
+      markPackageIntervalPaid,
+      markPackageIntervalUnpaid,
       addStudent,
       updateStudent,
       deleteStudent,

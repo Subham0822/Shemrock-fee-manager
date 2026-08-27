@@ -14,7 +14,7 @@ import {
   Clock,
   Sparkles,
 } from 'lucide-react';
-import { Student, PaymentMode } from '../../types';
+import { Student, PaymentMode, PackageIntervalKey, PACKAGE_INTERVALS } from '../../types';
 import { useFeeData } from '../../context/FeeDataContext';
 
 interface PaymentModalProps {
@@ -63,12 +63,34 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
   onClose,
   onSuccess,
 }) => {
-  const { students, markStudentPaid, markExamFeePaid, activeMonth, monthsList, getStudentMonthRecord } = useFeeData();
+  const {
+    students,
+    markStudentPaid,
+    markExamFeePaid,
+    markPackageIntervalPaid,
+    getStudentPackageRecord,
+    activeMonth,
+    monthsList,
+    getStudentMonthRecord,
+  } = useFeeData();
   const student = initialStudent ? (students.find((s) => s.id === initialStudent.id) || initialStudent) : null;
 
-  // Selected Months state (allows single, future, or multiple months)
+  const isPackaged = student?.admissionType === 'PACKAGED';
+
+  // Selected Months state for Unpackaged
   const [selectedMonths, setSelectedMonths] = useState<string[]>(() => {
     return [initialMonth || activeMonth];
+  });
+
+  // Selected Intervals state for Packaged
+  const [selectedIntervals, setSelectedIntervals] = useState<PackageIntervalKey[]>(() => {
+    if (student?.admissionType === 'PACKAGED') {
+      const firstUnpaid = PACKAGE_INTERVALS.find(
+        (i) => (student.packageRecords?.[i.key]?.feeStatus || 'UNPAID') !== 'PAID'
+      );
+      return [firstUnpaid ? firstUnpaid.key : 'INTERVAL_1'];
+    }
+    return ['INTERVAL_1'];
   });
 
   const julyRecord = student ? getStudentMonthRecord(student, 'July') : null;
@@ -115,6 +137,18 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
     });
   };
 
+  const toggleInterval = (intervalKey: PackageIntervalKey) => {
+    setSelectedIntervals((prev) => {
+      if (prev.includes(intervalKey)) {
+        if (prev.length === 1) return prev;
+        return prev.filter((k) => k !== intervalKey);
+      } else {
+        const updated = [...prev, intervalKey];
+        return PACKAGE_INTERVALS.map((i) => i.key).filter((k) => updated.includes(k));
+      }
+    });
+  };
+
   const selectOnlyCurrentMonth = () => {
     setSelectedMonths([activeMonth]);
   };
@@ -136,6 +170,18 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
       setSelectedMonths(unpaid);
     } else {
       setSelectedMonths([activeMonth]);
+    }
+  };
+
+  const selectAllUnpaidIntervals = () => {
+    const unpaid = PACKAGE_INTERVALS.filter(
+      (i) => getStudentPackageRecord(student, i.key).feeStatus !== 'PAID'
+    ).map((i) => i.key);
+
+    if (unpaid.length > 0) {
+      setSelectedIntervals(unpaid);
+    } else {
+      setSelectedIntervals(['INTERVAL_1']);
     }
   };
 
@@ -168,14 +214,25 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
     }
   }, [paymentDate]);
 
-  const handleConfirm = () => {
-    markStudentPaid(student.id, selectedMode, note, selectedMonths, paymentDate);
-    if (selectedMonths.includes('July') && includeJulyExamFee && isJulyExamUnpaid) {
-      markExamFeePaid(student.id, 'July', selectedMode, paymentDate);
+  const handleConfirm = async () => {
+    if (isPackaged) {
+      for (const intKey of selectedIntervals) {
+        await markPackageIntervalPaid(student.id, intKey, selectedMode, paymentDate, note);
+      }
+    } else {
+      markStudentPaid(student.id, selectedMode, note, selectedMonths, paymentDate);
+      if (selectedMonths.includes('July') && includeJulyExamFee && isJulyExamUnpaid) {
+        markExamFeePaid(student.id, 'July', selectedMode, paymentDate);
+      }
     }
     onClose();
     if (onSuccess) onSuccess();
   };
+
+  const selectedIntervalLabels = selectedIntervals.map((k) => {
+    const meta = PACKAGE_INTERVALS.find((i) => i.key === k);
+    return meta?.name || k;
+  });
 
   return (
     <div
@@ -197,9 +254,20 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
         {/* Header */}
         <div className="px-5 sm:px-6 py-3.5 border-b border-white/60 flex items-center justify-between bg-white/40">
           <div>
-            <span className="text-[11px] font-semibold uppercase tracking-wider text-[#64748b]">
-              Record Fee Payment
-            </span>
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-[#64748b]">
+                Record Fee Payment
+              </span>
+              <span
+                className={`px-2 py-0.2 rounded-md text-[10px] font-bold uppercase tracking-wider border ${
+                  isPackaged
+                    ? 'bg-indigo-50 text-indigo-800 border-indigo-200'
+                    : 'bg-slate-100 text-slate-700 border-slate-200'
+                }`}
+              >
+                {isPackaged ? 'Packaged (3-Interval)' : 'Unpackaged (Monthly)'}
+              </span>
+            </div>
             <h2 className="text-base sm:text-lg font-bold text-[#0f172a] leading-snug">
               {student.name}
             </h2>
@@ -223,7 +291,15 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
             </span>
           </div>
           <div className="text-xs font-semibold text-slate-700">
-            Selected: <span className="font-bold text-emerald-700">{selectedMonths.length} {selectedMonths.length === 1 ? 'Month' : 'Months'}</span>
+            {isPackaged ? (
+              <span>
+                Selected: <strong className="text-indigo-700 font-bold">{selectedIntervals.length} {selectedIntervals.length === 1 ? 'Interval' : 'Intervals'}</strong>
+              </span>
+            ) : (
+              <span>
+                Selected: <strong className="text-emerald-700 font-bold">{selectedMonths.length} {selectedMonths.length === 1 ? 'Month' : 'Months'}</strong>
+              </span>
+            )}
           </div>
         </div>
 
@@ -231,147 +307,231 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
         <div className="p-5 sm:p-6 overflow-y-auto space-y-4 flex-1 overscroll-contain">
           {step === 'select' ? (
             <>
-              {/* 1. Target Months Selector (Multi-month & Future months supported) */}
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <label className="block text-xs font-bold text-[#0f172a] uppercase tracking-wider flex items-center gap-1.5">
-                    <Layers className="w-3.5 h-3.5 text-slate-600" />
-                    Select Fee Period / Months
-                  </label>
-                  <span className="text-[11px] text-[#64748b]">Tap to toggle months</span>
-                </div>
+              {/* 1. Target Selector (Intervals for Packaged, Months for Unpackaged) */}
+              {isPackaged ? (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="block text-xs font-bold text-[#0f172a] uppercase tracking-wider flex items-center gap-1.5">
+                      <Layers className="w-3.5 h-3.5 text-indigo-600" />
+                      Select Payment Interval(s)
+                    </label>
+                    <span className="text-[11px] text-[#64748b]">Tap to select interval</span>
+                  </div>
 
-                {/* Quick Presets for Months */}
-                <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar">
-                  <button
-                    type="button"
-                    onClick={selectOnlyCurrentMonth}
-                    className={`px-2.5 py-1 rounded-lg text-xs font-semibold border transition-all flex-shrink-0 active:scale-95 ${
-                      selectedMonths.length === 1 && selectedMonths[0] === activeMonth
-                        ? 'bg-slate-800 text-white border-slate-800 shadow-xs'
-                        : 'bg-white/80 text-slate-700 border-white/90 hover:bg-white'
-                    }`}
-                  >
-                    Current: {activeMonth}
-                  </button>
-
-                  {activeMonthIdx < monthsList.length - 1 && (
+                  <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar">
                     <button
                       type="button"
-                      onClick={selectCurrentAndNextMonth}
-                      className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-white/80 text-slate-700 border border-white/90 hover:bg-white transition-all flex-shrink-0 active:scale-95 flex items-center gap-1"
+                      onClick={selectAllUnpaidIntervals}
+                      className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-white/80 text-slate-700 border border-white/90 hover:bg-white transition-all flex-shrink-0 active:scale-95"
                     >
-                      <Sparkles className="w-3 h-3 text-indigo-600" />
-                      + Next Month (Advance)
+                      All Unpaid Intervals
                     </button>
-                  )}
-
-                  <button
-                    type="button"
-                    onClick={selectAllUnpaidMonths}
-                    className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-white/80 text-slate-700 border border-white/90 hover:bg-white transition-all flex-shrink-0 active:scale-95"
-                  >
-                    All Unpaid
-                  </button>
-                </div>
-
-                {/* Months Grid */}
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">
-                  {monthsList.map((m, idx) => {
-                    const isSelected = selectedMonths.includes(m);
-                    const rec = getStudentMonthRecord(student, m);
-                    const alreadyPaid = rec.feeStatus === 'PAID';
-                    const isFuture = idx > activeMonthIdx;
-                    const isCurrent = m === activeMonth;
-
-                    return (
-                      <button
-                        key={m}
-                        type="button"
-                        id={`payment-month-toggle-${m.replace('/', '-')}`}
-                        onClick={() => toggleMonth(m)}
-                        className={`min-h-[48px] p-2.5 rounded-xl border text-left flex flex-col justify-between transition-all active:scale-95 relative ${
-                          isSelected
-                            ? 'bg-slate-900 text-white border-slate-900 shadow-md ring-2 ring-slate-400/40'
-                            : alreadyPaid
-                            ? 'bg-emerald-50/70 border-emerald-200/80 text-emerald-900 hover:bg-emerald-50'
-                            : 'bg-white/70 border-white/90 text-slate-700 hover:bg-white'
-                        }`}
-                      >
-                        <div className="flex items-center justify-between w-full">
-                          <span className={`text-xs font-bold truncate ${isSelected ? 'text-white' : 'text-[#0f172a]'}`}>
-                            {m}
-                          </span>
-                          <div
-                            className={`w-4 h-4 rounded-md border flex items-center justify-center ${
-                              isSelected
-                                ? 'bg-emerald-400 border-emerald-400 text-slate-900'
-                                : 'border-slate-300 bg-white/80'
-                            }`}
-                          >
-                            {isSelected && <Check className="w-3 h-3 stroke-[3]" />}
-                          </div>
-                        </div>
-
-                        <div className="mt-1 flex items-center justify-between text-[10px]">
-                          {alreadyPaid ? (
-                            <span className={isSelected ? 'text-emerald-200 font-semibold' : 'text-emerald-700 font-semibold'}>
-                              Paid
-                            </span>
-                          ) : (
-                            <span className={isSelected ? 'text-slate-300' : 'text-[#64748b]'}>
-                              Unpaid
-                            </span>
-                          )}
-
-                          {isCurrent ? (
-                            <span className={`px-1 py-0.2 rounded font-bold text-[9px] ${isSelected ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-700'}`}>
-                              Current
-                            </span>
-                          ) : isFuture ? (
-                            <span className={`px-1 py-0.2 rounded font-bold text-[9px] ${isSelected ? 'bg-indigo-400/30 text-indigo-200' : 'bg-indigo-50 text-indigo-700'}`}>
-                              Future
-                            </span>
-                          ) : null}
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
-
-                {/* Selected Summary Pill */}
-                <div className="bg-emerald-50/80 border border-emerald-200/80 rounded-xl p-2.5 flex items-center justify-between text-xs text-emerald-900">
-                  <span className="font-medium">
-                    Marking <strong>{selectedMonths.length}</strong> {selectedMonths.length === 1 ? 'period' : 'periods'}:{' '}
-                    <strong className="text-emerald-950">{selectedMonths.join(', ')}</strong>
-                  </span>
-                </div>
-
-                {/* Special July Exam Fee inclusion option */}
-                {selectedMonths.includes('July') && (
-                  <div className="bg-purple-50/70 border border-purple-200/80 rounded-xl p-3 flex items-center justify-between gap-2 text-xs">
-                    <div>
-                      <div className="font-bold text-purple-950 flex items-center gap-1.5">
-                        <Sparkles className="w-3.5 h-3.5 text-purple-600" /> July Exam Fees
-                      </div>
-                      <div className="text-[11px] text-purple-800 mt-0.5">
-                        {isJulyExamUnpaid ? 'Also mark July Exam Fees as PAID with this transaction' : 'Exam fees already recorded for July'}
-                      </div>
-                    </div>
-                    {isJulyExamUnpaid && (
-                      <label className="flex items-center gap-1.5 cursor-pointer flex-shrink-0">
-                        <input
-                          type="checkbox"
-                          checked={includeJulyExamFee}
-                          onChange={(e) => setIncludeJulyExamFee(e.target.checked)}
-                          className="w-4 h-4 rounded text-purple-600 focus:ring-purple-500 border-slate-300"
-                        />
-                        <span className="font-semibold text-xs text-purple-900">Include</span>
-                      </label>
-                    )}
                   </div>
-                )}
-              </div>
+
+                  {/* 3 Intervals Grid */}
+                  <div className="grid grid-cols-3 gap-2.5 pt-1">
+                    {PACKAGE_INTERVALS.map((intMeta) => {
+                      const isSelected = selectedIntervals.includes(intMeta.key);
+                      const rec = getStudentPackageRecord(student, intMeta.key);
+                      const alreadyPaid = rec.feeStatus === 'PAID';
+
+                      return (
+                        <button
+                          key={intMeta.key}
+                          type="button"
+                          id={`payment-interval-toggle-${intMeta.key}`}
+                          onClick={() => toggleInterval(intMeta.key)}
+                          className={`min-h-[58px] p-3 rounded-2xl border text-left flex flex-col justify-between transition-all active:scale-95 relative ${
+                            isSelected
+                              ? 'bg-slate-900 text-white border-slate-900 shadow-md ring-2 ring-indigo-400/40'
+                              : alreadyPaid
+                              ? 'bg-emerald-50/70 border-emerald-200/80 text-emerald-900 hover:bg-emerald-50'
+                              : 'bg-white/70 border-white/90 text-slate-700 hover:bg-white'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between w-full">
+                            <span className={`text-xs font-bold truncate ${isSelected ? 'text-white' : 'text-[#0f172a]'}`}>
+                              {intMeta.shortName}
+                            </span>
+                            <div
+                              className={`w-4 h-4 rounded-md border flex items-center justify-center ${
+                                isSelected
+                                  ? 'bg-emerald-400 border-emerald-400 text-slate-900'
+                                  : 'border-slate-300 bg-white/80'
+                              }`}
+                            >
+                              {isSelected && <Check className="w-3 h-3 stroke-[3]" />}
+                            </div>
+                          </div>
+
+                          <div className="mt-1.5 flex items-center justify-between text-[11px]">
+                            {alreadyPaid ? (
+                              <span className={isSelected ? 'text-emerald-200 font-semibold' : 'text-emerald-700 font-semibold'}>
+                                Paid
+                              </span>
+                            ) : (
+                              <span className={isSelected ? 'text-slate-300' : 'text-[#64748b]'}>
+                                Unpaid
+                              </span>
+                            )}
+                            <span className={`text-[10px] ${isSelected ? 'text-slate-300' : 'text-slate-400'}`}>1/3 Fee</span>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {/* Selected Interval Summary */}
+                  <div className="bg-indigo-50/80 border border-indigo-200/80 rounded-xl p-2.5 flex items-center justify-between text-xs text-indigo-950">
+                    <span className="font-medium">
+                      Marking <strong>{selectedIntervals.length}</strong> {selectedIntervals.length === 1 ? 'interval' : 'intervals'}:{' '}
+                      <strong className="text-indigo-950">{selectedIntervalLabels.join(', ')}</strong>
+                    </span>
+                  </div>
+                </div>
+              ) : (
+                /* Unpackaged Months Selector */
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="block text-xs font-bold text-[#0f172a] uppercase tracking-wider flex items-center gap-1.5">
+                      <Layers className="w-3.5 h-3.5 text-slate-600" />
+                      Select Fee Period / Months
+                    </label>
+                    <span className="text-[11px] text-[#64748b]">Tap to toggle months</span>
+                  </div>
+
+                  {/* Quick Presets for Months */}
+                  <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar">
+                    <button
+                      type="button"
+                      onClick={selectOnlyCurrentMonth}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-semibold border transition-all flex-shrink-0 active:scale-95 ${
+                        selectedMonths.length === 1 && selectedMonths[0] === activeMonth
+                          ? 'bg-slate-800 text-white border-slate-800 shadow-xs'
+                          : 'bg-white/80 text-slate-700 border-white/90 hover:bg-white'
+                      }`}
+                    >
+                      Current: {activeMonth}
+                    </button>
+
+                    {activeMonthIdx < monthsList.length - 1 && (
+                      <button
+                        type="button"
+                        onClick={selectCurrentAndNextMonth}
+                        className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-white/80 text-slate-700 border border-white/90 hover:bg-white transition-all flex-shrink-0 active:scale-95 flex items-center gap-1"
+                      >
+                        <Sparkles className="w-3 h-3 text-indigo-600" />
+                        + Next Month (Advance)
+                      </button>
+                    )}
+
+                    <button
+                      type="button"
+                      onClick={selectAllUnpaidMonths}
+                      className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-white/80 text-slate-700 border border-white/90 hover:bg-white transition-all flex-shrink-0 active:scale-95"
+                    >
+                      All Unpaid
+                    </button>
+                  </div>
+
+                  {/* Months Grid */}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">
+                    {monthsList.map((m, idx) => {
+                      const isSelected = selectedMonths.includes(m);
+                      const rec = getStudentMonthRecord(student, m);
+                      const alreadyPaid = rec.feeStatus === 'PAID';
+                      const isFuture = idx > activeMonthIdx;
+                      const isCurrent = m === activeMonth;
+
+                      return (
+                        <button
+                          key={m}
+                          type="button"
+                          id={`payment-month-toggle-${m.replace('/', '-')}`}
+                          onClick={() => toggleMonth(m)}
+                          className={`min-h-[48px] p-2.5 rounded-xl border text-left flex flex-col justify-between transition-all active:scale-95 relative ${
+                            isSelected
+                              ? 'bg-slate-900 text-white border-slate-900 shadow-md ring-2 ring-slate-400/40'
+                              : alreadyPaid
+                              ? 'bg-emerald-50/70 border-emerald-200/80 text-emerald-900 hover:bg-emerald-50'
+                              : 'bg-white/70 border-white/90 text-slate-700 hover:bg-white'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between w-full">
+                            <span className={`text-xs font-bold truncate ${isSelected ? 'text-white' : 'text-[#0f172a]'}`}>
+                              {m}
+                            </span>
+                            <div
+                              className={`w-4 h-4 rounded-md border flex items-center justify-center ${
+                                isSelected
+                                  ? 'bg-emerald-400 border-emerald-400 text-slate-900'
+                                  : 'border-slate-300 bg-white/80'
+                              }`}
+                            >
+                              {isSelected && <Check className="w-3 h-3 stroke-[3]" />}
+                            </div>
+                          </div>
+
+                          <div className="mt-1 flex items-center justify-between text-[10px]">
+                            {alreadyPaid ? (
+                              <span className={isSelected ? 'text-emerald-200 font-semibold' : 'text-emerald-700 font-semibold'}>
+                                Paid
+                              </span>
+                            ) : (
+                              <span className={isSelected ? 'text-slate-300' : 'text-[#64748b]'}>
+                                Unpaid
+                              </span>
+                            )}
+
+                            {isCurrent ? (
+                              <span className={`px-1 py-0.2 rounded font-bold text-[9px] ${isSelected ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-700'}`}>
+                                Current
+                              </span>
+                            ) : isFuture ? (
+                              <span className={`px-1 py-0.2 rounded font-bold text-[9px] ${isSelected ? 'bg-indigo-400/30 text-indigo-200' : 'bg-indigo-50 text-indigo-700'}`}>
+                                Future
+                              </span>
+                            ) : null}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {/* Selected Summary Pill */}
+                  <div className="bg-emerald-50/80 border border-emerald-200/80 rounded-xl p-2.5 flex items-center justify-between text-xs text-emerald-900">
+                    <span className="font-medium">
+                      Marking <strong>{selectedMonths.length}</strong> {selectedMonths.length === 1 ? 'period' : 'periods'}:{' '}
+                      <strong className="text-emerald-950">{selectedMonths.join(', ')}</strong>
+                    </span>
+                  </div>
+
+                  {/* Special July Exam Fee inclusion option */}
+                  {selectedMonths.includes('July') && (
+                    <div className="bg-purple-50/70 border border-purple-200/80 rounded-xl p-3 flex items-center justify-between gap-2 text-xs">
+                      <div>
+                        <div className="font-bold text-purple-950 flex items-center gap-1.5">
+                          <Sparkles className="w-3.5 h-3.5 text-purple-600" /> July Exam Fees
+                        </div>
+                        <div className="text-[11px] text-purple-800 mt-0.5">
+                          {isJulyExamUnpaid ? 'Also mark July Exam Fees as PAID with this transaction' : 'Exam fees already recorded for July'}
+                        </div>
+                      </div>
+                      {isJulyExamUnpaid && (
+                        <label className="flex items-center gap-1.5 cursor-pointer flex-shrink-0">
+                          <input
+                            type="checkbox"
+                            checked={includeJulyExamFee}
+                            onChange={(e) => setIncludeJulyExamFee(e.target.checked)}
+                            className="w-4 h-4 rounded text-purple-600 focus:ring-purple-500 border-slate-300"
+                          />
+                          <span className="font-semibold text-xs text-purple-900">Include</span>
+                        </label>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* 2. Exact Date of Fee Submission */}
               <div className="space-y-2 pt-2 border-t border-white/60">
@@ -490,7 +650,15 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
                   <p className="font-bold text-sm text-emerald-950">Confirm Fee Payment Entry</p>
                   <p className="mt-1">
                     You are recording fee payment for <strong>{student.name}</strong> for{' '}
-                    <strong>{selectedMonths.length} {selectedMonths.length === 1 ? 'month' : 'months'}</strong> ({selectedMonths.join(', ')}).
+                    {isPackaged ? (
+                      <strong>
+                        {selectedIntervals.length} {selectedIntervals.length === 1 ? 'interval' : 'intervals'} ({selectedIntervalLabels.join(', ')})
+                      </strong>
+                    ) : (
+                      <strong>
+                        {selectedMonths.length} {selectedMonths.length === 1 ? 'month' : 'months'} ({selectedMonths.join(', ')})
+                      </strong>
+                    )}.
                   </p>
                 </div>
               </div>
@@ -504,14 +672,22 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
                   <span className="text-[#64748b] text-xs">Class</span>
                   <span className="font-medium text-[#0f172a]">{student.className}</span>
                 </div>
+                <div className="px-4 py-2.5 flex justify-between">
+                  <span className="text-[#64748b] text-xs">Admission Plan</span>
+                  <span className="font-medium text-[#0f172a]">{isPackaged ? 'Packaged (3 Intervals)' : 'Unpackaged (Monthly)'}</span>
+                </div>
                 <div className="px-4 py-2.5 flex justify-between items-start">
-                  <span className="text-[#64748b] text-xs mt-0.5">Months / Period</span>
+                  <span className="text-[#64748b] text-xs mt-0.5">
+                    {isPackaged ? 'Interval(s)' : 'Months / Period'}
+                  </span>
                   <div className="text-right">
                     <span className="font-bold text-slate-900 bg-white px-2 py-0.5 rounded-md border border-white inline-block">
-                      {selectedMonths.join(', ')}
+                      {isPackaged ? selectedIntervalLabels.join(', ') : selectedMonths.join(', ')}
                     </span>
                     <span className="block text-[11px] text-emerald-700 font-semibold mt-0.5">
-                      {selectedMonths.length} {selectedMonths.length === 1 ? 'month' : 'months'} marked as PAID
+                      {isPackaged
+                        ? `${selectedIntervals.length} interval(s) marked as PAID`
+                        : `${selectedMonths.length} ${selectedMonths.length === 1 ? 'month' : 'months'} marked as PAID`}
                     </span>
                   </div>
                 </div>
@@ -554,7 +730,11 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
                 id="proceed-to-confirm-payment"
                 type="button"
                 onClick={() => setStep('confirm')}
-                disabled={selectedMonths.length === 0 || !paymentDate}
+                disabled={
+                  isPackaged
+                    ? selectedIntervals.length === 0 || !paymentDate
+                    : selectedMonths.length === 0 || !paymentDate
+                }
                 className="min-h-[46px] px-5 py-2.5 rounded-xl bg-[#334155] hover:bg-slate-700 active:bg-slate-800 active:scale-95 text-white text-sm font-semibold flex items-center gap-2 shadow-md transition-all disabled:opacity-50"
               >
                 Continue <ArrowRight className="w-4 h-4" />

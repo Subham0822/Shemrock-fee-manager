@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { X, UserPlus, Edit3, AlertCircle } from 'lucide-react';
-import { Student } from '../../types';
+import { X, UserPlus, Edit3, AlertCircle, Layers, Calendar } from 'lucide-react';
+import { Student, AdmissionType } from '../../types';
 import { useFeeData } from '../../context/FeeDataContext';
 
 interface AddEditStudentModalProps {
@@ -21,6 +21,7 @@ export const AddEditStudentModal: React.FC<AddEditStudentModalProps> = ({
   const isEdit = !!student;
   const [name, setName] = useState(student?.name || '');
   const [classId, setClassId] = useState(student?.classId || defaultClassId || classes[0]?.id || '');
+  const [admissionType, setAdmissionType] = useState<AdmissionType>(student?.admissionType || 'UNPACKAGED');
   const [error, setError] = useState<string | null>(null);
 
   // Prevent background scrolling on mobile when modal is active
@@ -45,6 +46,7 @@ export const AddEditStudentModal: React.FC<AddEditStudentModalProps> = ({
       const res = await updateStudent(student.id, {
         name,
         classId,
+        admissionType,
       });
       if (res.success) {
         onClose();
@@ -56,6 +58,7 @@ export const AddEditStudentModal: React.FC<AddEditStudentModalProps> = ({
       const res = await addStudent({
         name,
         classId,
+        admissionType,
       });
       if (res.success) {
         onClose();
@@ -143,9 +146,55 @@ export const AddEditStudentModal: React.FC<AddEditStudentModalProps> = ({
             </select>
           </div>
 
+          {/* Admission / Payment Scheme Selector */}
+          <div>
+            <label className="block text-xs font-semibold text-[#64748b] uppercase tracking-wider mb-2">
+              Admission Type *
+            </label>
+            <div className="grid grid-cols-2 gap-2.5">
+              <button
+                type="button"
+                id="admission-type-unpackaged-btn"
+                onClick={() => setAdmissionType('UNPACKAGED')}
+                className={`p-3 rounded-2xl border text-left transition-all relative flex flex-col justify-between gap-1.5 ${
+                  admissionType === 'UNPACKAGED'
+                    ? 'bg-slate-800 text-white border-slate-800 shadow-md ring-2 ring-slate-800/30'
+                    : 'bg-white/70 hover:bg-white border-white/90 text-slate-700 shadow-xs'
+                }`}
+              >
+                <div className="flex items-center gap-1.5 font-bold text-xs">
+                  <Calendar className="w-3.5 h-3.5" />
+                  <span>Unpackaged</span>
+                </div>
+                <div className={`text-[11px] leading-tight ${admissionType === 'UNPACKAGED' ? 'text-slate-300' : 'text-slate-500'}`}>
+                  Monthly fee tracking system
+                </div>
+              </button>
+
+              <button
+                type="button"
+                id="admission-type-packaged-btn"
+                onClick={() => setAdmissionType('PACKAGED')}
+                className={`p-3 rounded-2xl border text-left transition-all relative flex flex-col justify-between gap-1.5 ${
+                  admissionType === 'PACKAGED'
+                    ? 'bg-slate-800 text-white border-slate-800 shadow-md ring-2 ring-slate-800/30'
+                    : 'bg-white/70 hover:bg-white border-white/90 text-slate-700 shadow-xs'
+                }`}
+              >
+                <div className="flex items-center gap-1.5 font-bold text-xs">
+                  <Layers className="w-3.5 h-3.5" />
+                  <span>Packaged</span>
+                </div>
+                <div className={`text-[11px] leading-tight ${admissionType === 'PACKAGED' ? 'text-slate-300' : 'text-slate-500'}`}>
+                  3-Interval fee payment system
+                </div>
+              </button>
+            </div>
+          </div>
+
           {!isEdit && (
             <div className="p-3 bg-white/50 border border-white/70 rounded-2xl text-xs text-[#64748b]">
-              New students default to <strong className="text-rose-600 font-bold">UNPAID</strong> status. Fee payment can be recorded immediately after creating.
+              New students default to <strong className="text-rose-600 font-bold">UNPAID</strong> status. Fee payments can be recorded immediately after creating.
             </div>
           )}
 

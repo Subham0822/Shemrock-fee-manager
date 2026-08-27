@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Student, SchoolClass, SchoolSettings, PaymentMode, MonthPaymentRecord, FeeStatus } from '../types';
 import { DEFAULT_SETTINGS, INITIAL_CLASSES, ACADEMIC_MONTHS } from '../data/seedData';
-import { db, handleFirestoreError, OperationType, testConnection } from '../firebase';
+import { db, handleFirestoreError, OperationType, testConnection, isFirebaseConfigured } from '../firebase';
 import { collection, doc, onSnapshot, setDoc, deleteDoc, writeBatch, getDocs, limit, query } from 'firebase/firestore';
 
 interface ToastMessage {
@@ -33,6 +33,9 @@ interface FeeDataContextType {
   showToast: (title: string, message: string, type?: 'success' | 'info' | 'warning' | 'error') => void;
   removeToast: (id: string) => void;
   getStudentMonthRecord: (student: Student, month?: string) => MonthPaymentRecord;
+  toggleExamFeeStatus: (studentId: string, month?: string) => Promise<boolean>;
+  markExamFeePaid: (studentId: string, month?: string, paymentMode?: PaymentMode, paymentDate?: string) => Promise<boolean>;
+  markExamFeeUnpaid: (studentId: string, month?: string) => Promise<boolean>;
   markStudentPaid: (
     studentId: string,
     paymentMode: PaymentMode,
@@ -54,15 +57,16 @@ const STORAGE_KEY_STUDENTS = 'sfm_students_v3';
 const STORAGE_KEY_CLASSES = 'sfm_classes_v3';
 const STORAGE_KEY_SETTINGS = 'sfm_settings_v3';
 const STORAGE_KEY_ACTIVE_MONTH = 'sfm_active_month_v3';
+const STORAGE_KEY_BACKUP = 'sfm_students_backup';
 
-// Clear any legacy seed caches from older versions
-try {
-  localStorage.removeItem('sfm_students_v2_monthly');
-  localStorage.removeItem('sfm_students_v2');
-  localStorage.removeItem('sfm_students');
-} catch {
-  // ignore
-}
+const ALL_LEGACY_KEYS = [
+  'sfm_students_v3',
+  'sfm_students_backup',
+  'sfm_students_v2_monthly',
+  'sfm_students_v2',
+  'sfm_students',
+  'students',
+];
 
 const FeeDataContext = createContext<FeeDataContextType | undefined>(undefined);
 
@@ -104,22 +108,44 @@ export const FeeDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   const [students, setStudents] = useState<Student[]>(() => {
     try {
-      const saved = localStorage.getItem(STORAGE_KEY_STUDENTS);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) return parsed;
+      for (const key of ALL_LEGACY_KEYS) {
+        const saved = localStorage.getItem(key);
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            console.log(`[FeeDataContext] Restored ${parsed.length} students from storage key "${key}"`);
+            return parsed.map((s: any) => ({
+              id: s.id || `stu-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+              name: s.name || 'Unnamed',
+              classId: s.classId || 'class_1',
+              className: s.className || 'Class 1',
+              feeStatus: s.feeStatus || 'UNPAID',
+              paymentMode: s.paymentMode || null,
+              paymentDate: s.paymentDate || null,
+              paymentNote: s.paymentNote,
+              examFeeStatus: s.examFeeStatus || 'UNPAID',
+              examFeePaymentMode: s.examFeePaymentMode || null,
+              examFeePaymentDate: s.examFeePaymentDate || null,
+              monthlyRecords: s.monthlyRecords || {},
+              createdAt: s.createdAt || new Date().toISOString(),
+              updatedAt: s.updatedAt || new Date().toISOString(),
+            }));
+          }
+        }
       }
-    } catch {
-      // ignore
+    } catch (e) {
+      console.warn('[FeeDataContext] Error reading local students cache:', e);
     }
     return [];
   });
 
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
-  const [isCloudConnected, setIsCloudConnected] = useState<boolean>(true);
+  const [isCloudConnected, setIsCloudConnected] = useState<boolean>(isFirebaseConfigured);
   const [cloudError, setCloudError] = useState<string | null>(null);
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
   const [retryTrigger, setRetryTrigger] = useState(0);
+  const studentsRef = useRef<Student[]>(students);
+  studentsRef.current = students;
 
   const retryConnection = useCallback(async () => {
     setIsSyncing(true);
@@ -154,7 +180,7 @@ export const FeeDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
     }
   }, []);
 
-  // Initialize Firestore listeners
+  // Initialize Firestore listeners & safe sync
   useEffect(() => {
     testConnection().then((connected) => {
       if (connected) {
@@ -194,11 +220,18 @@ export const FeeDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
         setCloudError(null);
 
         if (snapshot.empty) {
-          setStudents([]);
-          try {
-            localStorage.setItem(STORAGE_KEY_STUDENTS, JSON.stringify([]));
-          } catch {
-            // ignore
+          // If remote cloud collection is empty BUT we have existing local students,
+          // upload our local students to the cloud instead of wiping them!
+          const currentLocal = studentsRef.current;
+          if (currentLocal && currentLocal.length > 0) {
+            console.log(`[FeeDataContext] Cloud is empty but local has ${currentLocal.length} students. Syncing local to cloud...`);
+            for (const st of currentLocal) {
+              try {
+                await setDoc(doc(db, 'students', st.id), sanitizeFirestoreData(st));
+              } catch (err) {
+                console.error(`Failed to push local student ${st.id} to cloud:`, err);
+              }
+            }
           }
           return;
         }
@@ -215,6 +248,7 @@ export const FeeDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
         setStudents(remoteStudents);
         try {
           localStorage.setItem(STORAGE_KEY_STUDENTS, JSON.stringify(remoteStudents));
+          localStorage.setItem(STORAGE_KEY_BACKUP, JSON.stringify(remoteStudents));
         } catch {
           // ignore
         }
@@ -235,9 +269,12 @@ export const FeeDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
   // Sync to local storage backup
   useEffect(() => {
     try {
-      localStorage.setItem(STORAGE_KEY_STUDENTS, JSON.stringify(students));
+      if (students.length > 0) {
+        localStorage.setItem(STORAGE_KEY_STUDENTS, JSON.stringify(students));
+        localStorage.setItem(STORAGE_KEY_BACKUP, JSON.stringify(students));
+      }
     } catch (e) {
-      console.error('Failed to persist students:', e);
+      console.error('Failed to persist students to local backup:', e);
     }
   }, [students]);
 
@@ -252,7 +289,16 @@ export const FeeDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const getStudentMonthRecord = useCallback((student: Student, month?: string): MonthPaymentRecord => {
     const targetMonth = month || activeMonth;
     if (student.monthlyRecords && student.monthlyRecords[targetMonth]) {
-      return student.monthlyRecords[targetMonth];
+      const rec = student.monthlyRecords[targetMonth];
+      return {
+        feeStatus: rec.feeStatus || 'UNPAID',
+        paymentMode: rec.paymentMode || null,
+        paymentDate: rec.paymentDate || null,
+        paymentNote: rec.paymentNote,
+        examFeeStatus: rec.examFeeStatus || (targetMonth === 'July' && student.examFeeStatus ? student.examFeeStatus : 'UNPAID'),
+        examFeePaymentMode: rec.examFeePaymentMode || null,
+        examFeePaymentDate: rec.examFeePaymentDate || null,
+      };
     }
     if (targetMonth === activeMonth && student.feeStatus) {
       return {
@@ -260,14 +306,160 @@ export const FeeDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
         paymentMode: student.paymentMode,
         paymentDate: student.paymentDate,
         paymentNote: student.paymentNote,
+        examFeeStatus: student.examFeeStatus || 'UNPAID',
+        examFeePaymentMode: student.examFeePaymentMode || null,
+        examFeePaymentDate: student.examFeePaymentDate || null,
       };
     }
     return {
       feeStatus: 'UNPAID',
       paymentMode: null,
       paymentDate: null,
+      examFeeStatus: 'UNPAID',
+      examFeePaymentMode: null,
+      examFeePaymentDate: null,
     };
   }, [activeMonth]);
+
+  const toggleExamFeeStatus = useCallback(async (studentId: string, month = 'July') => {
+    const targetStudent = students.find((s) => s.id === studentId);
+    if (!targetStudent) return false;
+
+    const currentRecords = targetStudent.monthlyRecords || {};
+    const existingRec = currentRecords[month] || {
+      feeStatus: 'UNPAID',
+      paymentMode: null,
+      paymentDate: null,
+    };
+
+    const isCurrentlyPaid = existingRec.examFeeStatus === 'PAID' || (month === 'July' && targetStudent.examFeeStatus === 'PAID');
+    const newStatus: FeeStatus = isCurrentlyPaid ? 'UNPAID' : 'PAID';
+    const dateStr = newStatus === 'PAID' ? new Date().toLocaleDateString('en-CA') : null;
+
+    const updatedRecords: Record<string, MonthPaymentRecord> = {
+      ...currentRecords,
+      [month]: {
+        ...existingRec,
+        examFeeStatus: newStatus,
+        examFeePaymentDate: dateStr,
+        examFeePaymentMode: newStatus === 'PAID' ? 'CASH' : null,
+      },
+    };
+
+    const updatedStudent: Student = {
+      ...targetStudent,
+      examFeeStatus: month === 'July' ? newStatus : targetStudent.examFeeStatus,
+      examFeePaymentDate: month === 'July' ? dateStr : targetStudent.examFeePaymentDate,
+      examFeePaymentMode: month === 'July' ? (newStatus === 'PAID' ? 'CASH' : null) : targetStudent.examFeePaymentMode,
+      monthlyRecords: updatedRecords,
+      updatedAt: new Date().toISOString(),
+    };
+
+    setStudents((prev) => prev.map((s) => (s.id === studentId ? updatedStudent : s)));
+    showToast(
+      'Exam Fee Updated',
+      `${targetStudent.name}'s ${month} Exam Fee marked as ${newStatus}`,
+      newStatus === 'PAID' ? 'success' : 'info'
+    );
+
+    try {
+      await setDoc(doc(db, 'students', studentId), sanitizeFirestoreData(updatedStudent));
+      return true;
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `students/${studentId}`);
+      return true;
+    }
+  }, [students, showToast]);
+
+  const markExamFeePaid = useCallback(async (
+    studentId: string,
+    month = 'July',
+    paymentMode: PaymentMode = 'CASH',
+    paymentDate?: string
+  ) => {
+    const targetStudent = students.find((s) => s.id === studentId);
+    if (!targetStudent) return false;
+
+    const currentRecords = targetStudent.monthlyRecords || {};
+    const existingRec = currentRecords[month] || {
+      feeStatus: 'UNPAID',
+      paymentMode: null,
+      paymentDate: null,
+    };
+
+    const dateStr = paymentDate || new Date().toLocaleDateString('en-CA');
+    const updatedRecords: Record<string, MonthPaymentRecord> = {
+      ...currentRecords,
+      [month]: {
+        ...existingRec,
+        examFeeStatus: 'PAID',
+        examFeePaymentDate: dateStr,
+        examFeePaymentMode: paymentMode,
+      },
+    };
+
+    const updatedStudent: Student = {
+      ...targetStudent,
+      examFeeStatus: month === 'July' ? 'PAID' : targetStudent.examFeeStatus,
+      examFeePaymentDate: month === 'July' ? dateStr : targetStudent.examFeePaymentDate,
+      examFeePaymentMode: month === 'July' ? paymentMode : targetStudent.examFeePaymentMode,
+      monthlyRecords: updatedRecords,
+      updatedAt: new Date().toISOString(),
+    };
+
+    setStudents((prev) => prev.map((s) => (s.id === studentId ? updatedStudent : s)));
+    showToast('Exam Fee Paid', `${targetStudent.name}'s ${month} Exam Fee marked as PAID on ${dateStr}`, 'success');
+
+    try {
+      await setDoc(doc(db, 'students', studentId), sanitizeFirestoreData(updatedStudent));
+      return true;
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `students/${studentId}`);
+      return true;
+    }
+  }, [students, showToast]);
+
+  const markExamFeeUnpaid = useCallback(async (studentId: string, month = 'July') => {
+    const targetStudent = students.find((s) => s.id === studentId);
+    if (!targetStudent) return false;
+
+    const currentRecords = targetStudent.monthlyRecords || {};
+    const existingRec = currentRecords[month] || {
+      feeStatus: 'UNPAID',
+      paymentMode: null,
+      paymentDate: null,
+    };
+
+    const updatedRecords: Record<string, MonthPaymentRecord> = {
+      ...currentRecords,
+      [month]: {
+        ...existingRec,
+        examFeeStatus: 'UNPAID',
+        examFeePaymentDate: null,
+        examFeePaymentMode: null,
+      },
+    };
+
+    const updatedStudent: Student = {
+      ...targetStudent,
+      examFeeStatus: month === 'July' ? 'UNPAID' : targetStudent.examFeeStatus,
+      examFeePaymentDate: month === 'July' ? null : targetStudent.examFeePaymentDate,
+      examFeePaymentMode: month === 'July' ? null : targetStudent.examFeePaymentMode,
+      monthlyRecords: updatedRecords,
+      updatedAt: new Date().toISOString(),
+    };
+
+    setStudents((prev) => prev.map((s) => (s.id === studentId ? updatedStudent : s)));
+    showToast('Exam Fee Reverted', `${targetStudent.name}'s ${month} Exam Fee reverted to UNPAID`, 'info');
+
+    try {
+      await setDoc(doc(db, 'students', studentId), sanitizeFirestoreData(updatedStudent));
+      return true;
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `students/${studentId}`);
+      return true;
+    }
+  }, [students, showToast]);
 
   const markStudentPaid = useCallback(async (
     studentId: string,
@@ -562,6 +754,9 @@ export const FeeDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
       showToast,
       removeToast,
       getStudentMonthRecord,
+      toggleExamFeeStatus,
+      markExamFeePaid,
+      markExamFeeUnpaid,
       markStudentPaid,
       markStudentUnpaid,
       addStudent,
@@ -586,6 +781,9 @@ export const FeeDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
       showToast,
       removeToast,
       getStudentMonthRecord,
+      toggleExamFeeStatus,
+      markExamFeePaid,
+      markExamFeeUnpaid,
       markStudentPaid,
       markStudentUnpaid,
       addStudent,

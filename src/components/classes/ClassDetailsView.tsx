@@ -33,7 +33,7 @@ export const ClassDetailsView: React.FC<ClassDetailsViewProps> = ({
   onOpenStudentDetail,
   onOpenAddStudent,
 }) => {
-  const { classes, students, getClassStats, activeMonth, getStudentMonthRecord } = useFeeData();
+  const { classes, students, getClassStats, activeMonth, getStudentMonthRecord, toggleExamFeeStatus } = useFeeData();
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<FilterStatus>('ALL');
 
@@ -318,6 +318,43 @@ export const ClassDetailsView: React.FC<ClassDetailsViewProps> = ({
                     </div>
                   </div>
 
+                  {/* July Special Exam Fee Row (Mobile - only for July) */}
+                  {activeMonth === 'July' && (
+                    <div className="mt-2.5 pt-2.5 border-t border-white/60 flex items-center justify-between gap-2 bg-purple-50/50 p-2.5 rounded-xl border border-purple-100/60">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-xs font-bold text-slate-700">Exam Fees:</span>
+                        {monthRecord.examFeeStatus === 'PAID' ? (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-bold bg-purple-100 text-purple-800 border border-purple-200">
+                            <CheckCircle2 className="w-3 h-3 text-purple-700" /> Paid
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-bold bg-amber-100 text-amber-800 border border-amber-200">
+                            <AlertCircle className="w-3 h-3 text-amber-700" /> Unpaid
+                          </span>
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => toggleExamFeeStatus(student.id, 'July')}
+                        className={`min-h-[36px] px-3 py-1 rounded-lg text-xs font-bold active:scale-95 transition-all flex items-center gap-1 ${
+                          monthRecord.examFeeStatus === 'PAID'
+                            ? 'text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 shadow-2xs'
+                            : 'text-white bg-purple-600 hover:bg-purple-700 shadow-xs'
+                        }`}
+                      >
+                        {monthRecord.examFeeStatus === 'PAID' ? (
+                          <>
+                            <Undo2 className="w-3 h-3" /> Revert
+                          </>
+                        ) : (
+                          <>
+                            <Check className="w-3.5 h-3.5" /> Mark Paid
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  )}
+
                   {/* Direct Action Row */}
                   <div className="mt-3 pt-2.5 border-t border-white/50 flex items-center justify-between gap-2">
                     <button
@@ -359,7 +396,10 @@ export const ClassDetailsView: React.FC<ClassDetailsViewProps> = ({
               <thead className="bg-white/40 border-b border-white/60 text-xs font-semibold uppercase tracking-wider text-[#64748b]">
                 <tr>
                   <th className="px-6 py-4">Student Name</th>
-                  <th className="px-6 py-4">{activeMonth} Status</th>
+                  <th className="px-6 py-4">{activeMonth} Fee</th>
+                  {activeMonth === 'July' && (
+                    <th className="px-6 py-4">Exam Fees</th>
+                  )}
                   <th className="px-6 py-4">Payment Details</th>
                   <th className="px-6 py-4 text-right">Quick Action</th>
                 </tr>
@@ -377,7 +417,7 @@ export const ClassDetailsView: React.FC<ClassDetailsViewProps> = ({
                       <td className="px-6 py-4">
                         <button
                           onClick={() => onOpenStudentDetail(student)}
-                          className="font-bold text-[#0f172a] hover:text-[#334155] text-left"
+                          className="font-bold text-[#0f172a] hover:text-[#334155] text-left cursor-pointer"
                         >
                           {student.name}
                         </button>
@@ -393,6 +433,31 @@ export const ClassDetailsView: React.FC<ClassDetailsViewProps> = ({
                           </span>
                         )}
                       </td>
+                      {activeMonth === 'July' && (
+                        <td className="px-6 py-4">
+                          {monthRecord.examFeeStatus === 'PAID' ? (
+                            <button
+                              type="button"
+                              onClick={() => toggleExamFeeStatus(student.id, 'July')}
+                              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold bg-purple-100 text-purple-800 border border-purple-200/80 hover:bg-purple-200/80 transition-all cursor-pointer shadow-2xs group"
+                              title="Click to toggle Exam Fee status"
+                            >
+                              <CheckCircle2 className="w-3.5 h-3.5 text-purple-700" />
+                              <span>PAID</span>
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => toggleExamFeeStatus(student.id, 'July')}
+                              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold bg-amber-100 text-amber-900 border border-amber-200/80 hover:bg-amber-200/80 transition-all cursor-pointer shadow-2xs group"
+                              title="Click to mark Exam Fee as Paid"
+                            >
+                              <AlertCircle className="w-3.5 h-3.5 text-amber-700" />
+                              <span>UNPAID</span>
+                            </button>
+                          )}
+                        </td>
+                      )}
                       <td className="px-6 py-4 text-xs text-[#64748b]">
                         {isPaid ? (
                           <div>

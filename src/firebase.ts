@@ -17,6 +17,8 @@ const config = {
   messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || rawFirebaseConfig.messagingSenderId || '',
 };
 
+export const isFirebaseConfigured = Boolean(config.projectId);
+
 const app = getApps().length > 0 ? getApp() : initializeApp(config);
 export const db = getFirestore(app, config.firestoreDatabaseId);
 

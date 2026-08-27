@@ -92,8 +92,8 @@ const AppContent: React.FC = () => {
 
           {route.tab === 'students' && (
             <StudentsDirectoryView
-              onOpenPayment={(s) => setPaymentState({ student: s })}
-              onOpenUnpaid={(s) => setUnpaidState({ student: s })}
+              onOpenPayment={(s, month) => setPaymentState({ student: s, month })}
+              onOpenUnpaid={(s, month) => setUnpaidState({ student: s, month })}
               onOpenStudentDetail={(s) => setDetailStudent(s)}
               onOpenAddStudent={(cId) => handleOpenAddStudent(cId)}
             />

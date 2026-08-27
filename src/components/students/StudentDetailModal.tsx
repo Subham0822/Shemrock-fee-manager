@@ -12,15 +12,18 @@ interface StudentDetailModalProps {
 }
 
 export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
-  student,
+  student: initialStudent,
   onClose,
   onOpenPayment,
   onOpenUnpaid,
   onOpenEdit,
 }) => {
-  const { deleteStudent, activeMonth, monthsList, getStudentMonthRecord } = useFeeData();
+  const { students, deleteStudent, activeMonth, monthsList, getStudentMonthRecord, toggleExamFeeStatus } = useFeeData();
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [inspectedMonth, setInspectedMonth] = useState<string>(activeMonth);
+
+  // Live student record from context for instant reactive UI updates
+  const student = initialStudent ? (students.find((s) => s.id === initialStudent.id) || initialStudent) : null;
 
   // Prevent background scrolling on mobile when modal is active
   useEffect(() => {
@@ -197,6 +200,43 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
                 </span>
               </div>
 
+              {/* July Special Exam Fee Row inside inspected month */}
+              {inspectedMonth === 'July' && (
+                <div className="mt-1 pt-2 border-t border-slate-100 flex items-center justify-between gap-2 bg-purple-50/60 p-2.5 rounded-xl border border-purple-100">
+                  <div className="flex items-center gap-2">
+                    <span className="font-bold text-xs text-slate-800">Exam Fees:</span>
+                    {inspectedMonthRecord.examFeeStatus === 'PAID' ? (
+                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md font-bold text-[11px] bg-purple-100 text-purple-900 border border-purple-200 shadow-2xs">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-purple-700" /> Paid
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md font-bold text-[11px] bg-amber-100 text-amber-900 border border-amber-200 shadow-2xs">
+                        <AlertCircle className="w-3.5 h-3.5 text-amber-700" /> Unpaid
+                      </span>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => toggleExamFeeStatus(student.id, 'July')}
+                    className={`min-h-[38px] px-3 py-1.5 rounded-lg text-xs font-bold active:scale-95 transition-all flex items-center gap-1.5 cursor-pointer ${
+                      inspectedMonthRecord.examFeeStatus === 'PAID'
+                        ? 'text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 shadow-2xs'
+                        : 'text-white bg-purple-600 hover:bg-purple-700 shadow-xs'
+                    }`}
+                  >
+                    {inspectedMonthRecord.examFeeStatus === 'PAID' ? (
+                      <>
+                        <Undo2 className="w-3.5 h-3.5 text-slate-600" /> Revert
+                      </>
+                    ) : (
+                      <>
+                        <Check className="w-3.5 h-3.5 stroke-[2.5]" /> Mark Paid
+                      </>
+                    )}
+                  </button>
+                </div>
+              )}
+
               {isPaidInspectedMonth ? (
                 <div className="space-y-2 pt-0.5">
                   <div className="text-slate-600 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
@@ -215,7 +255,7 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
                       }}
                       className="px-2.5 py-1 text-xs font-semibold text-rose-700 hover:text-rose-800 bg-rose-50 hover:bg-rose-100 rounded-lg transition-colors active:scale-95 flex items-center gap-1"
                     >
-                      <Undo2 className="w-3 h-3" /> Revert {inspectedMonth} to Unpaid
+                      <Undo2 className="w-3 h-3" /> Revert {inspectedMonth} Monthly Fee
                     </button>
                   </div>
                 </div>

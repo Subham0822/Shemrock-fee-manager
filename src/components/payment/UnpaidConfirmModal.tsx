@@ -11,12 +11,13 @@ interface UnpaidConfirmModalProps {
 }
 
 export const UnpaidConfirmModal: React.FC<UnpaidConfirmModalProps> = ({
-  student,
+  student: initialStudent,
   month,
   onClose,
   onSuccess,
 }) => {
-  const { markStudentUnpaid, activeMonth, getStudentMonthRecord } = useFeeData();
+  const { students, markStudentUnpaid, activeMonth, getStudentMonthRecord } = useFeeData();
+  const student = initialStudent ? (students.find((s) => s.id === initialStudent.id) || initialStudent) : null;
   const targetMonth = month || activeMonth;
 
   // Prevent background scrolling on mobile when modal is active

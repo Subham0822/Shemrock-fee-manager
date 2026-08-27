@@ -7,6 +7,9 @@ export interface MonthPaymentRecord {
   paymentMode: PaymentMode | null;
   paymentDate: string | null; // e.g. '2026-08-15'
   paymentNote?: string;
+  examFeeStatus?: FeeStatus;
+  examFeePaymentMode?: PaymentMode | null;
+  examFeePaymentDate?: string | null;
 }
 
 export interface Student {
@@ -19,6 +22,10 @@ export interface Student {
   paymentMode: PaymentMode | null;
   paymentDate: string | null;
   paymentNote?: string;
+  // Exam fee status (specifically for July)
+  examFeeStatus?: FeeStatus;
+  examFeePaymentMode?: PaymentMode | null;
+  examFeePaymentDate?: string | null;
   // Period-wise record dictionary (e.g. { "April": {...}, "Sept/Oct": {...}, "Jan/Feb/March": {...} })
   monthlyRecords?: Record<string, MonthPaymentRecord>;
   createdAt: string;

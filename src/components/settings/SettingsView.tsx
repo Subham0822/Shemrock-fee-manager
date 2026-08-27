@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useFeeData } from '../../context/FeeDataContext';
-import { School, Download, Check, AlertTriangle, Trash2 } from 'lucide-react';
+import { School, Download, Check, AlertTriangle, Trash2, Cloud, RefreshCw, Smartphone, Laptop, CheckCircle2 } from 'lucide-react';
 
 export const SettingsView: React.FC = () => {
   const {
@@ -11,6 +11,9 @@ export const SettingsView: React.FC = () => {
     monthsList,
     getStudentMonthRecord,
     deleteAllStudents,
+    isCloudConnected,
+    isSyncing,
+    retryConnection,
   } = useFeeData();
 
   const [schoolName, setSchoolName] = useState(settings.schoolName);
@@ -141,6 +144,65 @@ export const SettingsView: React.FC = () => {
           </button>
         </div>
       </form>
+
+      {/* Cloud Database & Multi-Device Realtime Sync */}
+      <div className="bg-white/40 backdrop-blur-md rounded-3xl border border-white/60 p-5 sm:p-6 shadow-xl space-y-4">
+        <div className="flex items-center justify-between pb-3 border-b border-white/50">
+          <div className="flex items-center gap-2.5">
+            <div className={`w-8 h-8 rounded-xl flex items-center justify-center shadow-xs border ${
+              isCloudConnected ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-amber-50 border-amber-200 text-amber-700'
+            }`}>
+              <Cloud className="w-4 h-4" />
+            </div>
+            <div>
+              <h3 className="text-sm font-bold text-[#0f172a]">Cloud Database & Multi-Device Sync</h3>
+              <p className="text-xs text-[#64748b]">Real-time synchronization across phones, tablets, and computers</p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => retryConnection()}
+            disabled={isSyncing}
+            className="px-3 py-1.5 rounded-xl border border-white/80 bg-white/70 hover:bg-white text-slate-700 text-xs font-semibold flex items-center gap-1.5 shadow-2xs transition-all cursor-pointer disabled:opacity-50"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin text-indigo-600' : ''}`} />
+            <span>{isSyncing ? 'Syncing...' : 'Sync Now'}</span>
+          </button>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div className="p-3.5 rounded-2xl bg-white/60 border border-white/80 space-y-1">
+            <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Sync Status</div>
+            <div className="flex items-center gap-2">
+              <span className={`w-2.5 h-2.5 rounded-full ${isCloudConnected ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`}></span>
+              <span className="text-xs font-bold text-slate-800">
+                {isCloudConnected ? 'Real-time Live Online' : 'Connecting to Cloud'}
+              </span>
+            </div>
+          </div>
+
+          <div className="p-3.5 rounded-2xl bg-white/60 border border-white/80 space-y-1">
+            <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Cloud Records</div>
+            <div className="text-xs font-bold text-slate-800 flex items-center gap-1">
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+              <span>{students.length} Student{students.length === 1 ? '' : 's'} Synchronized</span>
+            </div>
+          </div>
+
+          <div className="p-3.5 rounded-2xl bg-white/60 border border-white/80 space-y-1">
+            <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Multi-Device Access</div>
+            <div className="text-xs font-bold text-slate-800 flex items-center gap-2">
+              <span className="flex items-center gap-1 text-slate-600"><Smartphone className="w-3.5 h-3.5" /> Mobile</span>
+              <span className="text-slate-300">•</span>
+              <span className="flex items-center gap-1 text-slate-600"><Laptop className="w-3.5 h-3.5" /> Desktop</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="text-xs text-slate-600 bg-slate-50/70 border border-slate-100 rounded-xl p-3 leading-relaxed">
+          💡 Any student added, fee payment recorded, or status changed on one device is pushed to Firestore cloud and reflects <strong>instantly in real time</strong> across all other devices accessing this link simultaneously.
+        </div>
+      </div>
 
       {/* Data Management Actions */}
       <div className="bg-white/40 backdrop-blur-md rounded-3xl border border-white/60 p-5 sm:p-6 shadow-xl space-y-4">

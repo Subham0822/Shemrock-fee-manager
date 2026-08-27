@@ -58,17 +58,22 @@ const PAYMENT_OPTIONS: { mode: PaymentMode; label: string; sub: string; icon: Re
 ];
 
 export const PaymentModal: React.FC<PaymentModalProps> = ({
-  student,
+  student: initialStudent,
   initialMonth,
   onClose,
   onSuccess,
 }) => {
-  const { markStudentPaid, activeMonth, monthsList, getStudentMonthRecord } = useFeeData();
+  const { students, markStudentPaid, markExamFeePaid, activeMonth, monthsList, getStudentMonthRecord } = useFeeData();
+  const student = initialStudent ? (students.find((s) => s.id === initialStudent.id) || initialStudent) : null;
 
   // Selected Months state (allows single, future, or multiple months)
   const [selectedMonths, setSelectedMonths] = useState<string[]>(() => {
     return [initialMonth || activeMonth];
   });
+
+  const julyRecord = student ? getStudentMonthRecord(student, 'July') : null;
+  const isJulyExamUnpaid = julyRecord?.examFeeStatus !== 'PAID';
+  const [includeJulyExamFee, setIncludeJulyExamFee] = useState<boolean>(true);
 
   // Exact date of fee submission (defaults to today's local date YYYY-MM-DD)
   const [paymentDate, setPaymentDate] = useState<string>(() => {
@@ -165,6 +170,9 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
 
   const handleConfirm = () => {
     markStudentPaid(student.id, selectedMode, note, selectedMonths, paymentDate);
+    if (selectedMonths.includes('July') && includeJulyExamFee && isJulyExamUnpaid) {
+      markExamFeePaid(student.id, 'July', selectedMode, paymentDate);
+    }
     onClose();
     if (onSuccess) onSuccess();
   };
@@ -338,6 +346,31 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
                     <strong className="text-emerald-950">{selectedMonths.join(', ')}</strong>
                   </span>
                 </div>
+
+                {/* Special July Exam Fee inclusion option */}
+                {selectedMonths.includes('July') && (
+                  <div className="bg-purple-50/70 border border-purple-200/80 rounded-xl p-3 flex items-center justify-between gap-2 text-xs">
+                    <div>
+                      <div className="font-bold text-purple-950 flex items-center gap-1.5">
+                        <Sparkles className="w-3.5 h-3.5 text-purple-600" /> July Exam Fees
+                      </div>
+                      <div className="text-[11px] text-purple-800 mt-0.5">
+                        {isJulyExamUnpaid ? 'Also mark July Exam Fees as PAID with this transaction' : 'Exam fees already recorded for July'}
+                      </div>
+                    </div>
+                    {isJulyExamUnpaid && (
+                      <label className="flex items-center gap-1.5 cursor-pointer flex-shrink-0">
+                        <input
+                          type="checkbox"
+                          checked={includeJulyExamFee}
+                          onChange={(e) => setIncludeJulyExamFee(e.target.checked)}
+                          className="w-4 h-4 rounded text-purple-600 focus:ring-purple-500 border-slate-300"
+                        />
+                        <span className="font-semibold text-xs text-purple-900">Include</span>
+                      </label>
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* 2. Exact Date of Fee Submission */}
